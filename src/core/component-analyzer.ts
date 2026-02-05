@@ -3,6 +3,7 @@
 import { ComponentContext, LayerHierarchy, ComponentMetadata, EnhancedAnalysisResult, DetailedAuditResults, AuditCheck, TokenAnalysis, DesignToken, EnhancedAnalysisOptions } from '../types';
 import { extractTextContent, getAllChildNodes } from '../utils/figma-helpers';
 import { extractDesignTokensFromNode } from './token-analyzer';
+import { validateCollectionStructure, validateTextStylesAgainstVariables, validateTextStyleBindings, validateAllComponentBindings } from './collection-validator';
 import { extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations, createMCPEnhancedAnalysis } from '../api/claude';
 import { callProvider, ProviderId } from '../api/providers';
 import { analyzeNamingIssues } from '../fixes/naming-fixer';
@@ -2011,13 +2012,34 @@ async function createAuditResults(
   // Real accessibility checks
   const accessibility = runAccessibilityChecks(node, actualStates);
 
+  // Variable collection structure validation
+  const collectionValidation = await validateCollectionStructure();
+  const collectionStructure = collectionValidation.auditChecks;
+
+  // Text style and font-family variable sync validation
+  const textStyleValidation = await validateTextStylesAgainstVariables();
+  const textStyleBindingValidation = await validateTextStyleBindings();
+  
+  // Combine text style checks: sync + bindings
+  const textStyleSync = [
+    ...textStyleValidation.auditChecks,
+    ...textStyleBindingValidation.auditChecks
+  ];
+
+  // Component variable binding validation
+  const componentBindingValidation = await validateAllComponentBindings();
+  const componentBindings = componentBindingValidation.auditChecks;
+
   return {
     states: actualStates.map(state => ({
       name: state,
       found: true
     })),
     componentReadiness,
-    accessibility
+    accessibility,
+    collectionStructure,
+    textStyleSync,
+    componentBindings
   };
 }
 

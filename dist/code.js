@@ -706,6 +706,862 @@
     }
   }
 
+  // src/core/collection-validator.ts
+  var DEFAULT_COLLECTION_REQUIREMENTS = [
+    {
+      namePattern: /primitives?/i,
+      displayName: "Primitives",
+      requiredCategories: [
+        { name: "color" },
+        { name: "space" }
+      ]
+    },
+    {
+      namePattern: /brand/i,
+      displayName: "Brand",
+      requiredCategories: [
+        { name: "color" },
+        {
+          name: "typography",
+          subCategories: ["font-family", "font-weight", "font-size", "letter-spacing", "line-height"]
+        }
+      ]
+    },
+    {
+      namePattern: /theme/i,
+      displayName: "Theme",
+      requiredCategories: [
+        {
+          name: "colors",
+          subCategories: ["bg", "text", "border"]
+        },
+        {
+          name: "font-family",
+          subCategories: ["display", "heading", "body", "label"]
+        },
+        { name: "font-weight" },
+        {
+          name: "font-size",
+          subCategoryPattern: {
+            pattern: /^(\d+)?(x+)?(xs|sm|md|lg|xl)$/i,
+            description: "t-shirt size naming convention",
+            examples: ["xs", "sm", "md", "lg", "xl", "2xl", "3xl", "2xs", "3xs"]
+          }
+        },
+        {
+          name: "line-height",
+          mirrorCategory: "font-size"
+        },
+        {
+          name: "letter-spacing",
+          mirrorCategory: "font-size"
+        },
+        { name: "spacing" }
+      ]
+    }
+  ];
+  async function validateCollectionStructure(requirements = DEFAULT_COLLECTION_REQUIREMENTS) {
+    console.log("\u{1F50D} [COLLECTION] Starting collection structure validation...");
+    const validatedCollections = [];
+    const missingCollections = [];
+    const auditChecks = [];
+    try {
+      const collections = await figma.variables.getLocalVariableCollectionsAsync();
+      console.log(`\u{1F50D} [COLLECTION] Found ${collections.length} local collections:`, collections.map((c) => c.name));
+      const allVariables = await figma.variables.getLocalVariablesAsync();
+      console.log(`\u{1F50D} [COLLECTION] Found ${allVariables.length} total variables`);
+      const variablesByCollection = /* @__PURE__ */ new Map();
+      for (const variable of allVariables) {
+        const existing = variablesByCollection.get(variable.variableCollectionId) || [];
+        existing.push(variable);
+        variablesByCollection.set(variable.variableCollectionId, existing);
+      }
+      for (const requirement of requirements) {
+        const matchingCollection = collections.find(
+          (c) => requirement.namePattern.test(c.name)
+        );
+        if (!matchingCollection) {
+          console.log(`\u2139\uFE0F [COLLECTION] No "${requirement.displayName}" collection found - suggesting creation`);
+          const categoryList = requirement.requiredCategories.map((c) => c.name).join(", ");
+          auditChecks.push({
+            check: `${requirement.displayName} collection`,
+            status: "warning",
+            suggestion: `Consider creating a "${requirement.displayName}" collection with ${categoryList} categories for better design token organization.`
+          });
+          continue;
+        }
+        console.log(`\u2705 [COLLECTION] Found ${requirement.displayName} collection: "${matchingCollection.name}"`);
+        const collectionVariables = variablesByCollection.get(matchingCollection.id) || [];
+        const categories = extractCategories(collectionVariables);
+        console.log(`\u{1F50D} [COLLECTION] Categories in ${matchingCollection.name}:`, Array.from(categories.keys()));
+        const validationResult = validateCategories(
+          matchingCollection.name,
+          requirement,
+          categories
+        );
+        validatedCollections.push(validationResult);
+        if (validationResult.isValid) {
+          auditChecks.push({
+            check: `${requirement.displayName} collection structure`,
+            status: "pass",
+            suggestion: `"${matchingCollection.name}" has all required categories: ${validationResult.foundCategories.join(", ")}`
+          });
+        } else {
+          if (validationResult.missingCategories.length > 0) {
+            auditChecks.push({
+              check: `${requirement.displayName} collection categories`,
+              status: "fail",
+              suggestion: `"${matchingCollection.name}" is missing required categories: ${validationResult.missingCategories.join(", ")}. Add variables with these prefixes (e.g., "${validationResult.missingCategories[0]}/...").`
+            });
+          }
+          for (const subResult of validationResult.subCategoryResults) {
+            if (subResult.missing.length > 0) {
+              auditChecks.push({
+                check: `${requirement.displayName} ${subResult.category} sub-categories`,
+                status: "warning",
+                suggestion: `"${matchingCollection.name}" ${subResult.category} category is missing sub-categories: ${subResult.missing.join(", ")}. Add variables like "${subResult.category}/${subResult.missing[0]}/...".`
+              });
+            }
+            if (subResult.patternValidation) {
+              const { allMatch, invalidNames, patternDescription, examples } = subResult.patternValidation;
+              if (subResult.found.length === 0) {
+                auditChecks.push({
+                  check: `${requirement.displayName} ${subResult.category} naming`,
+                  status: "warning",
+                  suggestion: `"${matchingCollection.name}" ${subResult.category} category has no sub-categories. Add variables following ${patternDescription} (e.g., ${examples.slice(0, 3).join(", ")}).`
+                });
+              } else if (!allMatch && invalidNames.length > 0) {
+                auditChecks.push({
+                  check: `${requirement.displayName} ${subResult.category} naming`,
+                  status: "warning",
+                  suggestion: `"${matchingCollection.name}" ${subResult.category} has sub-categories not following ${patternDescription}: ${invalidNames.join(", ")}. Expected names like ${examples.slice(0, 3).join(", ")}.`
+                });
+              }
+            }
+            if (subResult.mirrorValidation) {
+              const { sourceCategory, missingSizes, extraSizes, isFullMatch } = subResult.mirrorValidation;
+              if (missingSizes.length > 0) {
+                auditChecks.push({
+                  check: `${requirement.displayName} ${subResult.category} sizes`,
+                  status: "warning",
+                  suggestion: `"${matchingCollection.name}" ${subResult.category} is missing sizes that exist in ${sourceCategory}: ${missingSizes.join(", ")}. Add matching variables for each ${sourceCategory} size.`
+                });
+              }
+              if (extraSizes.length > 0) {
+                auditChecks.push({
+                  check: `${requirement.displayName} ${subResult.category} extra sizes`,
+                  status: "warning",
+                  suggestion: `"${matchingCollection.name}" ${subResult.category} has sizes not in ${sourceCategory}: ${extraSizes.join(", ")}. Consider adding these to ${sourceCategory} or removing them.`
+                });
+              }
+              if (isFullMatch && subResult.found.length > 0) {
+                auditChecks.push({
+                  check: `${requirement.displayName} ${subResult.category} mirrors ${sourceCategory}`,
+                  status: "pass",
+                  suggestion: `"${matchingCollection.name}" ${subResult.category} correctly mirrors all ${sourceCategory} sizes`
+                });
+              }
+            }
+          }
+        }
+      }
+      const hasAllCollections = missingCollections.length === 0;
+      if (validatedCollections.length > 0) {
+        if (validatedCollections.every((v) => v.isValid)) {
+          auditChecks.unshift({
+            check: "Variable collection structure",
+            status: "pass",
+            suggestion: `All detected collections (${validatedCollections.map((v) => v.matchedRequirement).join(", ")}) have proper structure`
+          });
+        }
+      }
+      console.log("\u2705 [COLLECTION] Validation complete:", {
+        hasAllCollections,
+        validatedCount: validatedCollections.length,
+        missingCount: missingCollections.length
+      });
+      return {
+        hasAllCollections,
+        validatedCollections,
+        missingCollections,
+        auditChecks
+      };
+    } catch (error) {
+      console.error("\u274C [COLLECTION] Error validating collections:", error);
+      return {
+        hasAllCollections: false,
+        validatedCollections: [],
+        missingCollections: requirements.map((r) => r.displayName),
+        auditChecks: [{
+          check: "Variable collection structure",
+          status: "warning",
+          suggestion: `Could not validate variable collections: ${error instanceof Error ? error.message : "Unknown error"}`
+        }]
+      };
+    }
+  }
+  function extractCategories(variables) {
+    const categories = /* @__PURE__ */ new Map();
+    for (const variable of variables) {
+      const parts = variable.name.split("/");
+      if (parts.length === 0) continue;
+      const topCategory = parts[0].toLowerCase().trim();
+      if (!categories.has(topCategory)) {
+        categories.set(topCategory, /* @__PURE__ */ new Set());
+      }
+      if (parts.length > 1) {
+        const subCategory = parts[1].toLowerCase().trim();
+        categories.get(topCategory).add(subCategory);
+      }
+    }
+    return categories;
+  }
+  function validateCategories(collectionName, requirement, categories) {
+    const foundCategories = [];
+    const missingCategories = [];
+    const subCategoryResults = [];
+    for (const reqCategory of requirement.requiredCategories) {
+      const categoryName = reqCategory.name.toLowerCase();
+      const hasCategory = categories.has(categoryName);
+      if (hasCategory) {
+        foundCategories.push(reqCategory.name);
+        const subCategories = categories.get(categoryName) || /* @__PURE__ */ new Set();
+        if (reqCategory.subCategories && reqCategory.subCategories.length > 0) {
+          const foundSubs = [];
+          const missingSubs = [];
+          for (const reqSub of reqCategory.subCategories) {
+            const subName = reqSub.toLowerCase();
+            const hasSubCategory = subCategories.has(subName);
+            if (hasSubCategory) {
+              foundSubs.push(reqSub);
+            } else {
+              missingSubs.push(reqSub);
+            }
+          }
+          subCategoryResults.push({
+            category: reqCategory.name,
+            found: foundSubs,
+            missing: missingSubs
+          });
+        }
+        if (reqCategory.subCategoryPattern) {
+          const { pattern, description, examples } = reqCategory.subCategoryPattern;
+          const subCategoryArray = Array.from(subCategories);
+          const invalidNames = subCategoryArray.filter((name) => !pattern.test(name));
+          const validNames = subCategoryArray.filter((name) => pattern.test(name));
+          subCategoryResults.push({
+            category: reqCategory.name,
+            found: validNames,
+            missing: [],
+            // Pattern validation doesn't have "missing" in the same sense
+            patternValidation: {
+              allMatch: invalidNames.length === 0 && subCategoryArray.length > 0,
+              invalidNames,
+              patternDescription: description,
+              examples
+            }
+          });
+        }
+        if (reqCategory.mirrorCategory) {
+          const sourceCategory = reqCategory.mirrorCategory.toLowerCase();
+          const sourceSubCategories = categories.get(sourceCategory) || /* @__PURE__ */ new Set();
+          const currentSubCategories = Array.from(subCategories);
+          const sourceSubCategoriesArray = Array.from(sourceSubCategories);
+          const missingSizes = sourceSubCategoriesArray.filter((size) => !subCategories.has(size));
+          const extraSizes = currentSubCategories.filter((size) => !sourceSubCategories.has(size));
+          subCategoryResults.push({
+            category: reqCategory.name,
+            found: currentSubCategories.filter((size) => sourceSubCategories.has(size)),
+            missing: missingSizes,
+            mirrorValidation: {
+              sourceCategory: reqCategory.mirrorCategory,
+              missingSizes,
+              extraSizes,
+              isFullMatch: missingSizes.length === 0 && extraSizes.length === 0
+            }
+          });
+        }
+      } else {
+        missingCategories.push(reqCategory.name);
+      }
+    }
+    const hasAllCategories = missingCategories.length === 0;
+    const hasAllSubCategories = subCategoryResults.every((r) => {
+      if (r.missing.length > 0) return false;
+      if (r.patternValidation && !r.patternValidation.allMatch) return false;
+      if (r.mirrorValidation && !r.mirrorValidation.isFullMatch) return false;
+      return true;
+    });
+    return {
+      collectionName,
+      matchedRequirement: requirement.displayName,
+      isValid: hasAllCategories && hasAllSubCategories,
+      foundCategories,
+      missingCategories,
+      subCategoryResults
+    };
+  }
+  async function validateTextStylesAgainstVariables() {
+    const auditChecks = [];
+    try {
+      const collections = await figma.variables.getLocalVariableCollectionsAsync();
+      const allVariables = await figma.variables.getLocalVariablesAsync();
+      const themeCollection = collections.find((c) => /theme/i.test(c.name));
+      const fontFamilyVariables = [];
+      if (themeCollection) {
+        const themeVariables = allVariables.filter((v) => v.variableCollectionId === themeCollection.id);
+        for (const variable of themeVariables) {
+          const parts = variable.name.split("/").map((p) => p.toLowerCase().trim());
+          if (parts[0] === "font-family" && parts.length > 1) {
+            const subCategory = parts[1];
+            if (!fontFamilyVariables.includes(subCategory)) {
+              fontFamilyVariables.push(subCategory);
+            }
+          }
+        }
+      }
+      const textStyles = await figma.getLocalTextStylesAsync();
+      const textStyleCategories = [];
+      for (const style of textStyles) {
+        const parts = style.name.split("/").map((p) => p.toLowerCase().trim());
+        const topCategory = parts[0];
+        if (!textStyleCategories.includes(topCategory)) {
+          textStyleCategories.push(topCategory);
+        }
+      }
+      console.log("\u{1F4DD} [TEXT STYLE] Font-family variables:", fontFamilyVariables);
+      console.log("\u{1F4DD} [TEXT STYLE] Text style categories:", textStyleCategories);
+      const variablesMissingStyles = fontFamilyVariables.filter(
+        (v) => !textStyleCategories.includes(v)
+      );
+      const typographyPatterns = ["display", "heading", "body", "label", "caption", "title", "subtitle", "overline"];
+      const relevantTextCategories = textStyleCategories.filter(
+        (cat) => typographyPatterns.some((pattern) => cat.includes(pattern))
+      );
+      const stylesMissingVariables = relevantTextCategories.filter(
+        (s) => !fontFamilyVariables.includes(s)
+      );
+      const isFullMatch = variablesMissingStyles.length === 0 && stylesMissingVariables.length === 0;
+      const validation = {
+        fontFamilyVariables,
+        textStyleCategories,
+        variablesMissingStyles,
+        stylesMissingVariables,
+        isFullMatch
+      };
+      if (fontFamilyVariables.length === 0 && textStyles.length === 0) {
+        console.log("\u{1F4DD} [TEXT STYLE] No font-family variables or text styles found, skipping validation");
+      } else if (fontFamilyVariables.length === 0 && textStyles.length > 0) {
+        auditChecks.push({
+          check: "Font-family variables",
+          status: "warning",
+          suggestion: `Text styles exist (${relevantTextCategories.join(", ")}) but no font-family variables found. Consider adding font-family variables to your Theme collection to match your text styles.`
+        });
+      } else if (fontFamilyVariables.length > 0 && textStyles.length === 0) {
+        auditChecks.push({
+          check: "Text styles",
+          status: "warning",
+          suggestion: `Font-family variables exist (${fontFamilyVariables.join(", ")}) but no text styles found. Create text styles with matching names (e.g., "${fontFamilyVariables[0]}/...").`
+        });
+      } else {
+        if (variablesMissingStyles.length > 0) {
+          auditChecks.push({
+            check: "Text styles for font-family variables",
+            status: "warning",
+            suggestion: `Font-family variables missing matching text styles: ${variablesMissingStyles.join(", ")}. Create text styles like "${variablesMissingStyles[0]}/..." to match.`
+          });
+        }
+        if (stylesMissingVariables.length > 0) {
+          auditChecks.push({
+            check: "Font-family variables for text styles",
+            status: "warning",
+            suggestion: `Text styles missing matching font-family variables: ${stylesMissingVariables.join(", ")}. Add font-family/${stylesMissingVariables[0]} to your Theme collection.`
+          });
+        }
+        if (isFullMatch && fontFamilyVariables.length > 0) {
+          auditChecks.push({
+            check: "Text styles & font-family sync",
+            status: "pass",
+            suggestion: `All font-family variables (${fontFamilyVariables.join(", ")}) have matching text styles`
+          });
+        }
+      }
+      return { validation, auditChecks };
+    } catch (error) {
+      console.error("\u274C [TEXT STYLE] Error validating text styles:", error);
+      return {
+        validation: {
+          fontFamilyVariables: [],
+          textStyleCategories: [],
+          variablesMissingStyles: [],
+          stylesMissingVariables: [],
+          isFullMatch: false
+        },
+        auditChecks: [{
+          check: "Text style validation",
+          status: "warning",
+          suggestion: `Could not validate text styles: ${error instanceof Error ? error.message : "Unknown error"}`
+        }]
+      };
+    }
+  }
+  var TYPOGRAPHY_PROPERTIES = [
+    "fontFamily",
+    "fontSize",
+    "fontWeight",
+    "letterSpacing",
+    "lineHeight"
+  ];
+  async function validateTextStyleBindings() {
+    const auditChecks = [];
+    const results = [];
+    try {
+      const textStyles = await figma.getLocalTextStylesAsync();
+      const allVariables = await figma.variables.getLocalVariablesAsync();
+      const variableIdToName = /* @__PURE__ */ new Map();
+      for (const variable of allVariables) {
+        variableIdToName.set(variable.id, variable.name.toLowerCase());
+      }
+      console.log("\u{1F524} [TEXT BINDING] Validating", textStyles.length, "text styles");
+      if (textStyles.length === 0) {
+        return { results, auditChecks };
+      }
+      const stylesWithIssues = [];
+      for (const style of textStyles) {
+        const nameParts = style.name.split("/").map((p) => p.toLowerCase().trim());
+        if (nameParts.length < 2) {
+          console.log(`\u{1F524} [TEXT BINDING] Skipping "${style.name}" - doesn't match category/size pattern`);
+          continue;
+        }
+        const category = nameParts[0];
+        const size = nameParts[nameParts.length - 1];
+        const boundProperties = [];
+        const unboundProperties = [];
+        const boundVars = style.boundVariables || {};
+        for (const prop of TYPOGRAPHY_PROPERTIES) {
+          const binding = boundVars[prop];
+          if (binding && binding.id) {
+            const variableName = variableIdToName.get(binding.id) || "unknown";
+            let expectedPattern;
+            let isCorrectBinding;
+            switch (prop) {
+              case "fontFamily":
+                expectedPattern = `font-family/${category}`;
+                isCorrectBinding = variableName.includes("font-family") && variableName.includes(category);
+                break;
+              case "fontSize":
+                expectedPattern = `font-size/${size}`;
+                isCorrectBinding = variableName.includes("font-size") && variableName.endsWith(size);
+                break;
+              case "fontWeight":
+                expectedPattern = `font-weight/*`;
+                isCorrectBinding = variableName.includes("font-weight");
+                break;
+              case "letterSpacing":
+                expectedPattern = `letter-spacing/${size}`;
+                isCorrectBinding = variableName.includes("letter-spacing") && variableName.endsWith(size);
+                break;
+              case "lineHeight":
+                expectedPattern = `line-height/${size}`;
+                isCorrectBinding = variableName.includes("line-height") && variableName.endsWith(size);
+                break;
+              default:
+                expectedPattern = "";
+                isCorrectBinding = true;
+            }
+            boundProperties.push({
+              property: prop,
+              variableName,
+              isCorrectBinding,
+              expectedPattern
+            });
+          } else {
+            unboundProperties.push(prop);
+          }
+        }
+        const isFullyBound = unboundProperties.length === 0;
+        const hasCorrectBindings = boundProperties.every((b) => b.isCorrectBinding);
+        results.push({
+          styleName: style.name,
+          category,
+          size,
+          boundProperties,
+          unboundProperties,
+          isFullyBound,
+          hasCorrectBindings
+        });
+        if (unboundProperties.length > 0 || !hasCorrectBindings) {
+          const incorrectBindings = boundProperties.filter((b) => !b.isCorrectBinding).map((b) => ({
+            prop: b.property,
+            actual: b.variableName,
+            expected: b.expectedPattern
+          }));
+          stylesWithIssues.push({
+            styleName: style.name,
+            unboundProps: unboundProperties,
+            incorrectBindings
+          });
+        }
+      }
+      const totalStyles = results.length;
+      const fullyCompliantStyles = results.filter((r) => r.isFullyBound && r.hasCorrectBindings).length;
+      if (totalStyles === 0) {
+        return { results, auditChecks };
+      }
+      const unboundIssues = stylesWithIssues.filter((s) => s.unboundProps.length > 0);
+      const bindingIssues = stylesWithIssues.filter((s) => s.incorrectBindings.length > 0);
+      if (unboundIssues.length > 0) {
+        const sampleIssues = unboundIssues.slice(0, 3);
+        const issueDescriptions = sampleIssues.map(
+          (s) => `"${s.styleName}" missing: ${s.unboundProps.join(", ")}`
+        );
+        auditChecks.push({
+          check: "Text style variable bindings",
+          status: "warning",
+          suggestion: `${unboundIssues.length} text style(s) have raw values instead of theme variables. ${issueDescriptions.join("; ")}${unboundIssues.length > 3 ? ` and ${unboundIssues.length - 3} more...` : ""}`
+        });
+      }
+      if (bindingIssues.length > 0) {
+        const sampleIssues = bindingIssues.slice(0, 2);
+        const issueDescriptions = sampleIssues.map((s) => {
+          const wrongBinding = s.incorrectBindings[0];
+          return `"${s.styleName}" ${wrongBinding.prop} uses "${wrongBinding.actual}" but should use "${wrongBinding.expected}"`;
+        });
+        auditChecks.push({
+          check: "Text style variable naming",
+          status: "warning",
+          suggestion: `${bindingIssues.length} text style(s) use incorrectly named variables. ${issueDescriptions.join("; ")}${bindingIssues.length > 2 ? ` and ${bindingIssues.length - 2} more...` : ""}`
+        });
+      }
+      if (fullyCompliantStyles === totalStyles && totalStyles > 0) {
+        auditChecks.push({
+          check: "Text style variable bindings",
+          status: "pass",
+          suggestion: `All ${totalStyles} text styles use correctly named theme variables for typography properties`
+        });
+      }
+      console.log("\u{1F524} [TEXT BINDING] Validation complete:", {
+        total: totalStyles,
+        compliant: fullyCompliantStyles,
+        withIssues: stylesWithIssues.length
+      });
+      return { results, auditChecks };
+    } catch (error) {
+      console.error("\u274C [TEXT BINDING] Error validating text style bindings:", error);
+      return {
+        results,
+        auditChecks: [{
+          check: "Text style variable bindings",
+          status: "warning",
+          suggestion: `Could not validate text style bindings: ${error instanceof Error ? error.message : "Unknown error"}`
+        }]
+      };
+    }
+  }
+  function isTransparentColor(color) {
+    if ("a" in color && color.a === 0) return true;
+    return false;
+  }
+  function formatColor(color) {
+    const r = Math.round(color.r * 255);
+    const g = Math.round(color.g * 255);
+    const b = Math.round(color.b * 255);
+    if ("a" in color && color.a < 1) {
+      return `rgba(${r}, ${g}, ${b}, ${color.a.toFixed(2)})`;
+    }
+    return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+  }
+  function checkNodeForRawValues(node) {
+    const rawValues = [];
+    const boundVars = node.boundVariables || {};
+    if ("fills" in node && Array.isArray(node.fills)) {
+      const fills = node.fills;
+      const fillBindings = boundVars.fills || [];
+      fills.forEach((fill, index) => {
+        if (fill.type === "SOLID" && fill.visible !== false) {
+          const hasBinding = fillBindings[index] && fillBindings[index].id;
+          if (!hasBinding && !isTransparentColor(fill.color)) {
+            rawValues.push({
+              category: "fill",
+              property: "fill color",
+              value: formatColor(fill.color)
+            });
+          }
+        }
+      });
+    }
+    if ("strokes" in node && Array.isArray(node.strokes)) {
+      const strokes = node.strokes;
+      const strokeBindings = boundVars.strokes || [];
+      strokes.forEach((stroke, index) => {
+        if (stroke.type === "SOLID" && stroke.visible !== false) {
+          const hasBinding = strokeBindings[index] && strokeBindings[index].id;
+          if (!hasBinding && !isTransparentColor(stroke.color)) {
+            rawValues.push({
+              category: "stroke",
+              property: "stroke color",
+              value: formatColor(stroke.color)
+            });
+          }
+        }
+      });
+    }
+    if ("cornerRadius" in node && typeof node.cornerRadius === "number" && node.cornerRadius > 0) {
+      const hasBinding = boundVars.cornerRadius && boundVars.cornerRadius.id;
+      if (!hasBinding) {
+        rawValues.push({
+          category: "cornerRadius",
+          property: "corner radius",
+          value: `${node.cornerRadius}px`
+        });
+      }
+    }
+    if ("layoutMode" in node && node.layoutMode !== "NONE") {
+      if ("paddingTop" in node) {
+        const paddingProps = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"];
+        for (const prop of paddingProps) {
+          const value = node[prop];
+          if (typeof value === "number" && value > 0) {
+            const hasBinding = boundVars[prop] && boundVars[prop].id;
+            if (!hasBinding) {
+              rawValues.push({
+                category: "spacing",
+                property: prop,
+                value: `${value}px`
+              });
+            }
+          }
+        }
+      }
+      if ("itemSpacing" in node && typeof node.itemSpacing === "number" && node.itemSpacing > 0) {
+        const hasBinding = boundVars.itemSpacing && boundVars.itemSpacing.id;
+        if (!hasBinding) {
+          rawValues.push({
+            category: "spacing",
+            property: "gap",
+            value: `${node.itemSpacing}px`
+          });
+        }
+      }
+    }
+    if (node.type === "TEXT") {
+      const textNode = node;
+      const typographyProps = ["fontSize", "lineHeight", "letterSpacing"];
+      for (const prop of typographyProps) {
+        const hasBinding = boundVars[prop] && boundVars[prop].id;
+        if (!hasBinding) {
+          let value;
+          if (prop === "fontSize") {
+            value = typeof textNode.fontSize === "number" ? `${textNode.fontSize}px` : "mixed";
+          } else if (prop === "lineHeight") {
+            const lh = textNode.lineHeight;
+            if (typeof lh === "object" && "value" in lh) {
+              value = lh.unit === "PERCENT" ? `${lh.value}%` : `${lh.value}px`;
+            } else {
+              value = "auto";
+            }
+          } else {
+            const ls = textNode.letterSpacing;
+            if (typeof ls === "object" && "value" in ls) {
+              value = ls.unit === "PERCENT" ? `${ls.value}%` : `${ls.value}px`;
+            } else {
+              value = "0";
+            }
+          }
+          if (value !== "auto" && value !== "0" && value !== "0px" && value !== "0%") {
+            rawValues.push({
+              category: "typography",
+              property: prop,
+              value
+            });
+          }
+        }
+      }
+    }
+    if ("effects" in node && Array.isArray(node.effects)) {
+      const effects = node.effects;
+      const effectBindings = boundVars.effects || [];
+      effects.forEach((effect, index) => {
+        if (effect.visible !== false) {
+          const hasBinding = effectBindings[index] && effectBindings[index].id;
+          if (!hasBinding) {
+            let effectDesc = effect.type.toLowerCase().replace("_", " ");
+            if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
+              const shadow = effect;
+              effectDesc = `${effectDesc} (${formatColor(shadow.color)})`;
+            }
+            rawValues.push({
+              category: "effect",
+              property: effect.type.toLowerCase(),
+              value: effectDesc
+            });
+          }
+        }
+      });
+    }
+    return {
+      nodeId: node.id,
+      nodeName: node.name,
+      nodeType: node.type,
+      rawValues
+    };
+  }
+  function collectAllNodes(node) {
+    const nodes = [node];
+    if ("children" in node) {
+      for (const child of node.children) {
+        nodes.push(...collectAllNodes(child));
+      }
+    }
+    return nodes;
+  }
+  function validateComponentBindings(componentNode) {
+    const allNodes = collectAllNodes(componentNode);
+    const nodesWithRawValues = [];
+    const rawValueCounts = {
+      fill: 0,
+      stroke: 0,
+      effect: 0,
+      spacing: 0,
+      cornerRadius: 0,
+      typography: 0
+    };
+    for (const node of allNodes) {
+      const result = checkNodeForRawValues(node);
+      if (result.rawValues.length > 0) {
+        nodesWithRawValues.push(result);
+        for (const rv of result.rawValues) {
+          rawValueCounts[rv.category]++;
+        }
+      }
+    }
+    return {
+      componentName: componentNode.name,
+      componentId: componentNode.id,
+      totalNodes: allNodes.length,
+      nodesWithRawValues,
+      rawValueCounts,
+      isFullyBound: nodesWithRawValues.length === 0
+    };
+  }
+  async function validateAllComponentBindings() {
+    const auditChecks = [];
+    const results = [];
+    try {
+      let findComponents2 = function(node) {
+        if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+          components.push(node);
+        } else if ("children" in node) {
+          for (const child of node.children) {
+            findComponents2(child);
+          }
+        }
+      };
+      var findComponents = findComponents2;
+      const currentPage = figma.currentPage;
+      const components = [];
+      for (const child of currentPage.children) {
+        findComponents2(child);
+      }
+      console.log("\u{1F9E9} [COMPONENT BINDING] Found", components.length, "components to validate");
+      if (components.length === 0) {
+        return { results, auditChecks };
+      }
+      const componentsWithIssues = [];
+      for (const component of components) {
+        const result = validateComponentBindings(component);
+        results.push(result);
+        if (!result.isFullyBound) {
+          const totalRawValues = Object.values(result.rawValueCounts).reduce((a, b) => a + b, 0);
+          componentsWithIssues.push({
+            name: result.componentName,
+            counts: result.rawValueCounts,
+            totalRawValues
+          });
+        }
+      }
+      const totalComponents = results.length;
+      const compliantComponents = results.filter((r) => r.isFullyBound).length;
+      if (componentsWithIssues.length > 0) {
+        const totalCounts = {
+          fill: 0,
+          stroke: 0,
+          effect: 0,
+          spacing: 0,
+          cornerRadius: 0,
+          typography: 0
+        };
+        for (const comp of componentsWithIssues) {
+          for (const cat of Object.keys(comp.counts)) {
+            totalCounts[cat] += comp.counts[cat];
+          }
+        }
+        const categoryMessages = [];
+        if (totalCounts.fill > 0) {
+          categoryMessages.push(`${totalCounts.fill} fill colors`);
+        }
+        if (totalCounts.stroke > 0) {
+          categoryMessages.push(`${totalCounts.stroke} stroke colors`);
+        }
+        if (totalCounts.spacing > 0) {
+          categoryMessages.push(`${totalCounts.spacing} spacing values`);
+        }
+        if (totalCounts.cornerRadius > 0) {
+          categoryMessages.push(`${totalCounts.cornerRadius} corner radii`);
+        }
+        if (totalCounts.typography > 0) {
+          categoryMessages.push(`${totalCounts.typography} typography values`);
+        }
+        if (totalCounts.effect > 0) {
+          categoryMessages.push(`${totalCounts.effect} effects`);
+        }
+        const sampleComponents = componentsWithIssues.slice(0, 3).map((c) => `"${c.name}"`).join(", ");
+        auditChecks.push({
+          check: "Component variable bindings",
+          status: "warning",
+          suggestion: `${componentsWithIssues.length} component(s) have raw values: ${categoryMessages.join(", ")}. Components: ${sampleComponents}${componentsWithIssues.length > 3 ? ` and ${componentsWithIssues.length - 3} more` : ""}. Use theme variables instead.`
+        });
+        if (totalCounts.fill > 5) {
+          auditChecks.push({
+            check: "Component fill colors",
+            status: "warning",
+            suggestion: `${totalCounts.fill} fill colors are using raw values. Bind to color variables from your Theme collection (e.g., colors/bg/*, colors/text/*).`
+          });
+        }
+        if (totalCounts.spacing > 5) {
+          auditChecks.push({
+            check: "Component spacing",
+            status: "warning",
+            suggestion: `${totalCounts.spacing} spacing values (padding, gap) are using raw values. Bind to spacing variables from your Theme collection.`
+          });
+        }
+      }
+      if (compliantComponents === totalComponents && totalComponents > 0) {
+        auditChecks.push({
+          check: "Component variable bindings",
+          status: "pass",
+          suggestion: `All ${totalComponents} components use theme variables for visual properties`
+        });
+      }
+      console.log("\u{1F9E9} [COMPONENT BINDING] Validation complete:", {
+        total: totalComponents,
+        compliant: compliantComponents,
+        withIssues: componentsWithIssues.length
+      });
+      return { results, auditChecks };
+    } catch (error) {
+      console.error("\u274C [COMPONENT BINDING] Error validating component bindings:", error);
+      return {
+        results,
+        auditChecks: [{
+          check: "Component variable bindings",
+          status: "warning",
+          suggestion: `Could not validate component bindings: ${error instanceof Error ? error.message : "Unknown error"}`
+        }]
+      };
+    }
+  }
+
   // src/api/claude.ts
   function createEnhancedMetadataPrompt(componentContext) {
     return `You are an expert design system architect analyzing a Figma component for comprehensive metadata and design token recommendations.
@@ -4144,13 +5000,26 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       }
     ];
     const accessibility = runAccessibilityChecks(node, actualStates);
+    const collectionValidation = await validateCollectionStructure();
+    const collectionStructure = collectionValidation.auditChecks;
+    const textStyleValidation = await validateTextStylesAgainstVariables();
+    const textStyleBindingValidation = await validateTextStyleBindings();
+    const textStyleSync = [
+      ...textStyleValidation.auditChecks,
+      ...textStyleBindingValidation.auditChecks
+    ];
+    const componentBindingValidation = await validateAllComponentBindings();
+    const componentBindings = componentBindingValidation.auditChecks;
     return {
       states: actualStates.map((state) => ({
         name: state,
         found: true
       })),
       componentReadiness,
-      accessibility
+      accessibility,
+      collectionStructure,
+      textStyleSync,
+      componentBindings
     };
   }
   var INTERACTIVE_KEYWORDS = [

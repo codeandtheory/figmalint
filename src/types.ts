@@ -242,6 +242,12 @@ export interface DetailedAuditResults {
   componentReadiness: AuditCheck[];
   /** Real WCAG-informed accessibility checks (contrast, touch targets, focus state, font size) */
   accessibility: AuditCheck[];
+  /** Variable collection structure validation */
+  collectionStructure?: AuditCheck[];
+  /** Text style and font-family variable sync validation */
+  textStyleSync?: AuditCheck[];
+  /** Component variable binding validation */
+  componentBindings?: AuditCheck[];
 }
 
 export interface EnhancedAnalysisResult {

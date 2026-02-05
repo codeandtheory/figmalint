@@ -4613,6 +4613,144 @@
         html += '</div>';
       }
 
+      // Variable Collection Structure Audit
+      if (audit.collectionStructure && audit.collectionStructure.length > 0) {
+        html += '<div class="audit-section">';
+        html += `
+          <div class="section-header">
+            <h4 class="section-title">Variable Collections</h4>
+            <div class="tooltip">
+              <div class="info-icon">i</div>
+              <span class="tooltiptext">
+                <strong>Variable Collection Structure</strong><br>
+                Validates that your Figma variable collections follow design system best practices. Checks for Primitives (color, space), Brand (color, typography), and Theme (colors with bg/text/border, typography) collections with proper category organization.
+              </span>
+            </div>
+          </div>
+        `;
+
+        audit.collectionStructure.forEach(item => {
+          totalCount++;
+          const status = item.status;
+          if (status === 'pass') passCount++;
+
+          // Medium weight for collection structure (1.5x)
+          weightedTotalScore += 1.5;
+          if (status === 'pass') {
+            weightedPassScore += 1.5;
+            console.log(`[DEBUG][COLLECTIONS] "${item.check}" = PASS → +1.5 points`);
+          } else if (status === 'warning') {
+            weightedPassScore += 0.5; // Partial credit for warnings
+            console.log(`[DEBUG][COLLECTIONS] "${item.check}" = WARNING → +0.5 points`);
+          } else {
+            console.log(`[DEBUG][COLLECTIONS] "${item.check}" = FAIL → 0 points`);
+          }
+
+          html += `
+            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}">
+              <span class="audit-status ${status}">${
+                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
+              }</span>
+              <span class="audit-label">${item.check}</span>
+              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+
+      // Text Style & Font-Family Sync Audit
+      if (audit.textStyleSync && audit.textStyleSync.length > 0) {
+        html += '<div class="audit-section">';
+        html += `
+          <div class="section-header">
+            <h4 class="section-title">Text Styles</h4>
+            <div class="tooltip">
+              <div class="info-icon">i</div>
+              <span class="tooltiptext">
+                <strong>Text Style & Variable Sync</strong><br>
+                Validates that font-family variables (display, heading, body, label) have matching text styles, and vice versa. Ensures consistency between your typography variables and text styles.
+              </span>
+            </div>
+          </div>
+        `;
+
+        audit.textStyleSync.forEach(item => {
+          totalCount++;
+          const status = item.status;
+          if (status === 'pass') passCount++;
+
+          // Medium weight for text style sync (1.5x)
+          weightedTotalScore += 1.5;
+          if (status === 'pass') {
+            weightedPassScore += 1.5;
+            console.log(`[DEBUG][TEXTSTYLES] "${item.check}" = PASS → +1.5 points`);
+          } else if (status === 'warning') {
+            weightedPassScore += 0.5; // Partial credit for warnings
+            console.log(`[DEBUG][TEXTSTYLES] "${item.check}" = WARNING → +0.5 points`);
+          } else {
+            console.log(`[DEBUG][TEXTSTYLES] "${item.check}" = FAIL → 0 points`);
+          }
+
+          html += `
+            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}">
+              <span class="audit-status ${status}">${
+                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
+              }</span>
+              <span class="audit-label">${item.check}</span>
+              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+
+      // Component Variable Bindings Audit
+      if (audit.componentBindings && audit.componentBindings.length > 0) {
+        html += '<div class="audit-section">';
+        html += `
+          <div class="section-header">
+            <h4 class="section-title">Component Variables</h4>
+            <div class="tooltip">
+              <div class="info-icon">i</div>
+              <span class="tooltiptext">
+                <strong>Component Variable Bindings</strong><br>
+                Validates that components use theme variables instead of raw/hard-coded values for fills, strokes, spacing, corner radius, typography, and effects. Components should reference variables from your Theme collection.
+              </span>
+            </div>
+          </div>
+        `;
+
+        audit.componentBindings.forEach(item => {
+          totalCount++;
+          const status = item.status;
+          if (status === 'pass') passCount++;
+
+          // High weight for component bindings (2x)
+          weightedTotalScore += 2;
+          if (status === 'pass') {
+            weightedPassScore += 2;
+            console.log(`[DEBUG][COMPBIND] "${item.check}" = PASS → +2 points`);
+          } else if (status === 'warning') {
+            weightedPassScore += 0.5; // Partial credit for warnings
+            console.log(`[DEBUG][COMPBIND] "${item.check}" = WARNING → +0.5 points`);
+          } else {
+            console.log(`[DEBUG][COMPBIND] "${item.check}" = FAIL → 0 points`);
+          }
+
+          html += `
+            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}">
+              <span class="audit-status ${status}">${
+                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
+              }</span>
+              <span class="audit-label">${item.check}</span>
+              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+
       // Layer Naming Audit (Phase 3) — Tree layout grouped by parent path
       if (currentNamingIssues && currentNamingIssues.length > 0) {
         html += '<div class="audit-section">';
