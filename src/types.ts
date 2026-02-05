@@ -186,6 +186,7 @@ export type UIMessageType =
   | 'update-model'
   | 'analyze'
   | 'analyze-enhanced'
+  | 'analyze-system'
   | 'clear-api-key'
   | 'chat-message'
   | 'chat-clear-history'

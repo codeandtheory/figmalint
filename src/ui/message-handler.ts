@@ -4,6 +4,7 @@ import { PluginMessage, UIMessageType, EnhancedAnalysisOptions, ChatMessage, Cha
 import { sendMessageToUI, isValidNodeForAnalysis } from '../utils/figma-helpers';
 import { processEnhancedAnalysis, processAnalysisResult, extractComponentContext } from '../core/component-analyzer';
 import { extractDesignTokensFromNode } from '../core/token-analyzer';
+import { validateCollectionStructure, validateTextStylesAgainstVariables, validateTextStyleBindings, validateAllComponentBindings } from '../core/collection-validator';
 import { extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations } from '../api/claude';
 import ComponentConsistencyEngine from '../core/consistency-engine';
 import {
@@ -65,6 +66,14 @@ function isValidApiKeyFormat(apiKey: string, provider: ProviderId = selectedProv
 let lastAnalyzedMetadata: any = null;
 let lastAnalyzedNode: any = null;
 
+// Plugin-level state for storing last CTDS audit results
+let lastSystemAuditResults: {
+  collectionStructure: any[];
+  textStyleSync: any[];
+  componentBindings: any[];
+  timestamp: number;
+} | null = null;
+
 // Initialize consistency engine
 const consistencyEngine = new ComponentConsistencyEngine({
   enableCaching: true,
@@ -95,6 +104,9 @@ export async function handleUIMessage(msg: PluginMessage): Promise<void> {
         break;
       case 'analyze-enhanced':
         await handleEnhancedAnalyze(data);
+        break;
+      case 'analyze-system':
+        await handleSystemAudit();
         break;
       case 'clear-api-key':
         await handleClearApiKey();
@@ -231,6 +243,103 @@ async function handleUpdateModel(model: string): Promise<void> {
   } catch (error) {
     console.error('Error updating model:', error);
     figma.notify('Failed to update model', { error: true });
+  }
+}
+
+/**
+ * Calculate CTDS Audit score from audit checks
+ * - pass: 100 points
+ * - warning: 50 points  
+ * - fail: 0 points
+ */
+function calculateAuditScore(checks: AuditCheck[]): { score: number; total: number; passed: number; warnings: number; failed: number } {
+  if (checks.length === 0) {
+    return { score: 100, total: 0, passed: 0, warnings: 0, failed: 0 };
+  }
+
+  let passed = 0;
+  let warnings = 0;
+  let failed = 0;
+
+  checks.forEach(check => {
+    if (check.status === 'pass') {
+      passed++;
+    } else if (check.status === 'warning') {
+      warnings++;
+    } else {
+      failed++;
+    }
+  });
+
+  const total = checks.length;
+  const points = (passed * 100) + (warnings * 50) + (failed * 0);
+  const maxPoints = total * 100;
+  const score = Math.round(points / maxPoints * 100);
+
+  return { score, total, passed, warnings, failed };
+}
+
+/**
+ * System audit (CTDS Audit) - validates design system structure
+ */
+async function handleSystemAudit(): Promise<void> {
+  try {
+    console.log('🔍 Running CTDS audit...');
+
+    // Run all system-level validations
+    const [collectionValidation, textStyleSync, textStyleBindings, componentBindings] = await Promise.all([
+      validateCollectionStructure(),
+      validateTextStylesAgainstVariables(),
+      validateTextStyleBindings(),
+      validateAllComponentBindings()
+    ]);
+
+    // Combine text style checks
+    const combinedTextStyleSync = [
+      ...textStyleSync.auditChecks,
+      ...textStyleBindings.auditChecks
+    ];
+
+    // Calculate scores for each section
+    const collectionScore = calculateAuditScore(collectionValidation.auditChecks);
+    const textStyleScore = calculateAuditScore(combinedTextStyleSync);
+    const componentScore = calculateAuditScore(componentBindings.auditChecks);
+
+    // Calculate overall score (weighted average)
+    const allChecks = [
+      ...collectionValidation.auditChecks,
+      ...combinedTextStyleSync,
+      ...componentBindings.auditChecks
+    ];
+    const overallScore = calculateAuditScore(allChecks);
+
+    // Store results for chat context
+    lastSystemAuditResults = {
+      collectionStructure: collectionValidation.auditChecks,
+      textStyleSync: combinedTextStyleSync,
+      componentBindings: componentBindings.auditChecks,
+      timestamp: Date.now()
+    };
+
+    // Send results to UI
+    sendMessageToUI('system-audit-result', {
+      collectionStructure: collectionValidation.auditChecks,
+      textStyleSync: combinedTextStyleSync,
+      componentBindings: componentBindings.auditChecks,
+      scores: {
+        overall: overallScore,
+        collections: collectionScore,
+        textStyles: textStyleScore,
+        components: componentScore
+      }
+    });
+
+    console.log('✅ CTDS audit complete - Score:', overallScore.score);
+  } catch (error) {
+    console.error('❌ CTDS audit error:', error);
+    sendMessageToUI('system-audit-result', {
+      error: error instanceof Error ? error.message : 'Unknown error during system audit'
+    });
   }
 }
 
@@ -751,46 +860,62 @@ function getCurrentComponentContext(): any {
     const lastMetadata = lastAnalyzedMetadata;
     const lastNode = lastAnalyzedNode;
 
-    if (!lastMetadata && !lastNode) {
-      return null;
-    }
-
-    // Build component context
+    // Build context object
     const context: any = {
-      hasCurrentComponent: true,
       timestamp: Date.now()
     };
 
-    // Add component info if we have a selected node
-    if (lastNode) {
-      context.component = {
-        name: lastNode.name,
-        type: lastNode.type,
-        id: lastNode.id
-      };
+    // Add component context if available
+    if (lastMetadata || lastNode) {
+      context.hasCurrentComponent = true;
 
-      // Add selection info
-      const selection = figma.currentPage.selection;
-      if (selection.length > 0) {
-        context.selection = {
-          count: selection.length,
-          types: selection.map(node => node.type),
-          names: selection.map(node => node.name)
+      // Add component info if we have a selected node
+      if (lastNode) {
+        context.component = {
+          name: lastNode.name,
+          type: lastNode.type,
+          id: lastNode.id
+        };
+
+        // Add selection info
+        const selection = figma.currentPage.selection;
+        if (selection.length > 0) {
+          context.selection = {
+            count: selection.length,
+            types: selection.map(node => node.type),
+            names: selection.map(node => node.name)
+          };
+        }
+      }
+
+      // Add analysis metadata if available
+      if (lastMetadata) {
+        context.analysis = {
+          component: lastMetadata.component,
+          description: lastMetadata.description,
+          props: lastMetadata.props || [],
+          states: lastMetadata.states || [],
+          accessibility: lastMetadata.accessibility,
+          audit: lastMetadata.audit,
+          mcpReadiness: lastMetadata.mcpReadiness
         };
       }
     }
 
-    // Add analysis metadata if available
-    if (lastMetadata) {
-      context.analysis = {
-        component: lastMetadata.component,
-        description: lastMetadata.description,
-        props: lastMetadata.props || [],
-        states: lastMetadata.states || [],
-        accessibility: lastMetadata.accessibility,
-        audit: lastMetadata.audit,
-        mcpReadiness: lastMetadata.mcpReadiness
+    // Add CTDS audit context if available
+    if (lastSystemAuditResults) {
+      context.hasSystemAudit = true;
+      context.systemAudit = {
+        timestamp: lastSystemAuditResults.timestamp,
+        collectionStructure: lastSystemAuditResults.collectionStructure,
+        textStyleSync: lastSystemAuditResults.textStyleSync,
+        componentBindings: lastSystemAuditResults.componentBindings
       };
+    }
+
+    // Return null if no context available
+    if (!context.hasCurrentComponent && !context.hasSystemAudit) {
+      return null;
     }
 
     return context;
@@ -860,6 +985,42 @@ function createChatPromptWithContext(userMessage: string, mcpResponse: { sources
     currentComponentContext += '\n';
   }
 
+  // Build CTDS audit context (system-level design system validation)
+  let systemAuditContext = '';
+  if (componentContext && componentContext.hasSystemAudit && componentContext.systemAudit) {
+    const audit = componentContext.systemAudit;
+    systemAuditContext = '\n**CTDS Audit Results (Design System Validation):**\n';
+
+    // Variable Collections
+    if (audit.collectionStructure && audit.collectionStructure.length > 0) {
+      systemAuditContext += '\n*Variable Collections:*\n';
+      audit.collectionStructure.forEach((item: any) => {
+        const icon = item.status === 'pass' ? '✓' : item.status === 'warning' ? '⚠' : '✗';
+        systemAuditContext += `${icon} ${item.check}${item.suggestion ? ` - ${item.suggestion}` : ''}\n`;
+      });
+    }
+
+    // Text Styles
+    if (audit.textStyleSync && audit.textStyleSync.length > 0) {
+      systemAuditContext += '\n*Text Styles:*\n';
+      audit.textStyleSync.forEach((item: any) => {
+        const icon = item.status === 'pass' ? '✓' : item.status === 'warning' ? '⚠' : '✗';
+        systemAuditContext += `${icon} ${item.check}${item.suggestion ? ` - ${item.suggestion}` : ''}\n`;
+      });
+    }
+
+    // Component Variables
+    if (audit.componentBindings && audit.componentBindings.length > 0) {
+      systemAuditContext += '\n*Component Variable Bindings:*\n';
+      audit.componentBindings.forEach((item: any) => {
+        const icon = item.status === 'pass' ? '✓' : item.status === 'warning' ? '⚠' : '✗';
+        systemAuditContext += `${icon} ${item.check}${item.suggestion ? ` - ${item.suggestion}` : ''}\n`;
+      });
+    }
+
+    systemAuditContext += '\n';
+  }
+
   // Build knowledge context from MCP sources
   let knowledgeContext = '';
   if (mcpResponse.sources && mcpResponse.sources.length > 0) {
@@ -871,30 +1032,39 @@ function createChatPromptWithContext(userMessage: string, mcpResponse: { sources
   }
 
   const hasComponentContext = componentContext && componentContext.hasCurrentComponent;
+  const hasSystemAudit = componentContext && componentContext.hasSystemAudit;
 
   return `You are a specialized design systems assistant with access to comprehensive design systems knowledge. You're helping a user with their Figma plugin for design system analysis.
 
 ${conversationContext}**Current User Question:** ${userMessage}
 
-${currentComponentContext}${knowledgeContext}**Instructions:**
+${currentComponentContext}${systemAuditContext}${knowledgeContext}**Instructions:**
 1. ${hasComponentContext ?
     'The user is currently working on a specific component in Figma. Use the component context above to provide specific, actionable advice about their current work.' :
     'Provide helpful, accurate answers based on the design systems knowledge provided'}
 2. ${hasComponentContext ?
     'If they ask about "this component" or "my component", refer to the current component context provided above' :
     'If you need context about a specific component, suggest they select and analyze a component first'}
-3. Be conversational and practical in your responses
-4. When discussing components, tokens, or patterns, provide specific guidance
-5. If referencing the knowledge sources, mention them naturally in your response
-6. Keep responses focused and actionable
-7. If the user is asking about Figma-specific functionality, provide relevant plugin or design workflow advice
-8. ${hasComponentContext ?
+3. ${hasSystemAudit ?
+    'The user has run a CTDS Audit on their design system. Use the audit results above to answer questions about variable collections, text styles, and component variable bindings.' :
+    'If the user wants design system-level validation (variable collections, text styles, component bindings), suggest they run a CTDS Audit first.'}
+4. Be conversational and practical in your responses
+5. When discussing components, tokens, or patterns, provide specific guidance
+6. If referencing the knowledge sources, mention them naturally in your response
+7. Keep responses focused and actionable
+8. If the user is asking about Figma-specific functionality, provide relevant plugin or design workflow advice
+9. ${hasComponentContext ?
     'Help them improve their current component by addressing any issues mentioned in the analysis context' :
     'Provide general design systems guidance'}
+10. ${hasSystemAudit ?
+    'When asked about variable naming, text styles, or components using raw values, refer to the CTDS Audit results above for specific issues.' :
+    ''}
 
 ${hasComponentContext ?
   'Since you have context about their current component, prioritize advice that directly applies to what they\'re working on.' :
-  'If the user wants component-specific advice, suggest they select and analyze a component in Figma first.'}
+  hasSystemAudit ?
+    'Since you have CTDS Audit results, you can answer questions about variable collections, text styles, and component variable bindings.' :
+    'If the user wants component-specific advice, suggest they analyze a component. For design system validation, suggest they run a CTDS Audit.'}
 
 Respond naturally and helpfully to the user's question.`;
 }

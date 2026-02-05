@@ -24,8 +24,10 @@ export interface CollectionRequirement {
 export interface CategoryRequirement {
   /** Category name (e.g., "color", "space") */
   name: string;
-  /** Optional sub-categories required within this category (exact names) */
+  /** Optional sub-categories required within this category */
   subCategories?: string[];
+  /** If true, sub-categories can partially match (contain) the required names. Default: false (exact match) */
+  subCategoryPartialMatch?: boolean;
   /** Optional pattern that sub-categories must follow (e.g., t-shirt sizes) */
   subCategoryPattern?: {
     /** Regex pattern to match valid sub-category names */
@@ -143,7 +145,8 @@ export const DEFAULT_COLLECTION_REQUIREMENTS: CollectionRequirement[] = [
       },
       { 
         name: 'font-family',
-        subCategories: ['display', 'heading', 'body', 'label']
+        subCategories: ['display', 'heading', 'body', 'label'],
+        subCategoryPartialMatch: true // e.g., "display-primary" matches "display"
       },
       { name: 'font-weight' },
       { 
@@ -203,6 +206,40 @@ export async function validateCollectionStructure(
       variablesByCollection.set(variable.variableCollectionId, existing);
     }
     
+    // Pre-check: Find Primitives and Theme collections for alias checking
+    const primitivesCollection = collections.find(c => /primitives?/i.test(c.name));
+    const themeCollection = collections.find(c => /theme/i.test(c.name));
+    const brandCollection = collections.find(c => /brand/i.test(c.name));
+    
+    // Check if Theme variables are aliased to Primitives
+    let themeConnectedToPrimitives = false;
+    if (primitivesCollection && themeCollection && !brandCollection) {
+      const themeVariables = variablesByCollection.get(themeCollection.id) || [];
+      const primitivesVariableIds = new Set(
+        (variablesByCollection.get(primitivesCollection.id) || []).map(v => v.id)
+      );
+      
+      // Check if any Theme variables reference Primitives variables
+      let aliasCount = 0;
+      for (const themeVar of themeVariables) {
+        const valuesByMode = themeVar.valuesByMode;
+        for (const modeId of Object.keys(valuesByMode)) {
+          const value = valuesByMode[modeId];
+          // Check if value is an alias (references another variable)
+          if (value && typeof value === 'object' && 'type' in value && value.type === 'VARIABLE_ALIAS') {
+            const aliasId = (value as VariableAlias).id;
+            if (primitivesVariableIds.has(aliasId)) {
+              aliasCount++;
+            }
+          }
+        }
+      }
+      
+      // Consider connected if at least 10% of theme variables reference primitives
+      themeConnectedToPrimitives = aliasCount > 0 && (aliasCount / themeVariables.length) >= 0.1;
+      console.log(`🔗 [COLLECTION] Theme-Primitives connection: ${aliasCount} aliases found, connected=${themeConnectedToPrimitives}`);
+    }
+    
     // Check each requirement
     for (const requirement of requirements) {
       // Find matching collection
@@ -211,6 +248,17 @@ export async function validateCollectionStructure(
       );
       
       if (!matchingCollection) {
+        // Special case: Brand collection is optional if Theme is connected to Primitives
+        if (requirement.displayName === 'Brand' && themeConnectedToPrimitives) {
+          console.log(`✅ [COLLECTION] Brand collection optional - Theme is connected to Primitives`);
+          auditChecks.push({
+            check: `${requirement.displayName} collection`,
+            status: 'pass',
+            suggestion: `Brand collection not required - Theme variables are connected directly to Primitives. This is a valid design token architecture.`
+          });
+          continue;
+        }
+        
         // Collection doesn't exist - suggest creating it (info, not failure)
         console.log(`ℹ️ [COLLECTION] No "${requirement.displayName}" collection found - suggesting creation`);
         const categoryList = requirement.requiredCategories.map(c => c.name).join(', ');
@@ -410,15 +458,24 @@ function validateCategories(
       foundCategories.push(reqCategory.name);
       const subCategories = categories.get(categoryName) || new Set();
       
-      // Check exact sub-categories if required
+      // Check sub-categories if required
       if (reqCategory.subCategories && reqCategory.subCategories.length > 0) {
         const foundSubs: string[] = [];
         const missingSubs: string[] = [];
+        const usePartialMatch = reqCategory.subCategoryPartialMatch === true;
+        const subCategoriesArray = Array.from(subCategories);
         
         for (const reqSub of reqCategory.subCategories) {
           const subName = reqSub.toLowerCase();
-          // Check for exact match only
-          const hasSubCategory = subCategories.has(subName);
+          
+          let hasSubCategory: boolean;
+          if (usePartialMatch) {
+            // Check if any sub-category contains the required name
+            hasSubCategory = subCategoriesArray.some(actual => actual.includes(subName));
+          } else {
+            // Check for exact match only
+            hasSubCategory = subCategories.has(subName);
+          }
           
           if (hasSubCategory) {
             foundSubs.push(reqSub);
@@ -627,9 +684,13 @@ export async function validateTextStylesAgainstVariables(): Promise<{
     console.log('📝 [TEXT STYLE] Font-family variables:', fontFamilyVariables);
     console.log('📝 [TEXT STYLE] Text style categories:', textStyleCategories);
     
-    // Compare: which variables don't have matching text styles?
+    // Compare using partial matching:
+    // - A variable "display" matches a text style category "display-primary" or "display"
+    // - A text style category "heading" matches a variable "heading-sans" or "heading"
+    
+    // Which variables don't have matching text styles? (partial match)
     const variablesMissingStyles = fontFamilyVariables.filter(
-      v => !textStyleCategories.includes(v)
+      v => !textStyleCategories.some(cat => cat.includes(v) || v.includes(cat))
     );
     
     // Compare: which text style categories don't have matching variables?
@@ -638,8 +699,9 @@ export async function validateTextStylesAgainstVariables(): Promise<{
     const relevantTextCategories = textStyleCategories.filter(
       cat => typographyPatterns.some(pattern => cat.includes(pattern))
     );
+    // Which text style categories don't have matching variables? (partial match)
     const stylesMissingVariables = relevantTextCategories.filter(
-      s => !fontFamilyVariables.includes(s)
+      s => !fontFamilyVariables.some(v => s.includes(v) || v.includes(s))
     );
     
     const isFullMatch = variablesMissingStyles.length === 0 && stylesMissingVariables.length === 0;

@@ -737,7 +737,9 @@
         },
         {
           name: "font-family",
-          subCategories: ["display", "heading", "body", "label"]
+          subCategories: ["display", "heading", "body", "label"],
+          subCategoryPartialMatch: true
+          // e.g., "display-primary" matches "display"
         },
         { name: "font-weight" },
         {
@@ -776,11 +778,45 @@
         existing.push(variable);
         variablesByCollection.set(variable.variableCollectionId, existing);
       }
+      const primitivesCollection = collections.find((c) => /primitives?/i.test(c.name));
+      const themeCollection = collections.find((c) => /theme/i.test(c.name));
+      const brandCollection = collections.find((c) => /brand/i.test(c.name));
+      let themeConnectedToPrimitives = false;
+      if (primitivesCollection && themeCollection && !brandCollection) {
+        const themeVariables = variablesByCollection.get(themeCollection.id) || [];
+        const primitivesVariableIds = new Set(
+          (variablesByCollection.get(primitivesCollection.id) || []).map((v) => v.id)
+        );
+        let aliasCount = 0;
+        for (const themeVar of themeVariables) {
+          const valuesByMode = themeVar.valuesByMode;
+          for (const modeId of Object.keys(valuesByMode)) {
+            const value = valuesByMode[modeId];
+            if (value && typeof value === "object" && "type" in value && value.type === "VARIABLE_ALIAS") {
+              const aliasId = value.id;
+              if (primitivesVariableIds.has(aliasId)) {
+                aliasCount++;
+              }
+            }
+          }
+        }
+        themeConnectedToPrimitives = aliasCount > 0 && aliasCount / themeVariables.length >= 0.1;
+        console.log(`\u{1F517} [COLLECTION] Theme-Primitives connection: ${aliasCount} aliases found, connected=${themeConnectedToPrimitives}`);
+      }
       for (const requirement of requirements) {
         const matchingCollection = collections.find(
           (c) => requirement.namePattern.test(c.name)
         );
         if (!matchingCollection) {
+          if (requirement.displayName === "Brand" && themeConnectedToPrimitives) {
+            console.log(`\u2705 [COLLECTION] Brand collection optional - Theme is connected to Primitives`);
+            auditChecks.push({
+              check: `${requirement.displayName} collection`,
+              status: "pass",
+              suggestion: `Brand collection not required - Theme variables are connected directly to Primitives. This is a valid design token architecture.`
+            });
+            continue;
+          }
           console.log(`\u2139\uFE0F [COLLECTION] No "${requirement.displayName}" collection found - suggesting creation`);
           const categoryList = requirement.requiredCategories.map((c) => c.name).join(", ");
           auditChecks.push({
@@ -929,9 +965,16 @@
         if (reqCategory.subCategories && reqCategory.subCategories.length > 0) {
           const foundSubs = [];
           const missingSubs = [];
+          const usePartialMatch = reqCategory.subCategoryPartialMatch === true;
+          const subCategoriesArray = Array.from(subCategories);
           for (const reqSub of reqCategory.subCategories) {
             const subName = reqSub.toLowerCase();
-            const hasSubCategory = subCategories.has(subName);
+            let hasSubCategory;
+            if (usePartialMatch) {
+              hasSubCategory = subCategoriesArray.some((actual) => actual.includes(subName));
+            } else {
+              hasSubCategory = subCategories.has(subName);
+            }
             if (hasSubCategory) {
               foundSubs.push(reqSub);
             } else {
@@ -1032,14 +1075,14 @@
       console.log("\u{1F4DD} [TEXT STYLE] Font-family variables:", fontFamilyVariables);
       console.log("\u{1F4DD} [TEXT STYLE] Text style categories:", textStyleCategories);
       const variablesMissingStyles = fontFamilyVariables.filter(
-        (v) => !textStyleCategories.includes(v)
+        (v) => !textStyleCategories.some((cat) => cat.includes(v) || v.includes(cat))
       );
       const typographyPatterns = ["display", "heading", "body", "label", "caption", "title", "subtitle", "overline"];
       const relevantTextCategories = textStyleCategories.filter(
         (cat) => typographyPatterns.some((pattern) => cat.includes(pattern))
       );
       const stylesMissingVariables = relevantTextCategories.filter(
-        (s) => !fontFamilyVariables.includes(s)
+        (s) => !fontFamilyVariables.some((v) => s.includes(v) || v.includes(s))
       );
       const isFullMatch = variablesMissingStyles.length === 0 && stylesMissingVariables.length === 0;
       const validation = {
@@ -6464,6 +6507,7 @@ ${scoringCriteria}
   }
   var lastAnalyzedMetadata = null;
   var lastAnalyzedNode = null;
+  var lastSystemAuditResults = null;
   var consistencyEngine = new consistency_engine_default({
     enableCaching: true,
     enableMCPIntegration: true,
@@ -6488,6 +6532,9 @@ ${scoringCriteria}
           break;
         case "analyze-enhanced":
           await handleEnhancedAnalyze(data);
+          break;
+        case "analyze-system":
+          await handleSystemAudit();
           break;
         case "clear-api-key":
           await handleClearApiKey();
@@ -6595,6 +6642,75 @@ ${scoringCriteria}
     } catch (error) {
       console.error("Error updating model:", error);
       figma.notify("Failed to update model", { error: true });
+    }
+  }
+  function calculateAuditScore(checks) {
+    if (checks.length === 0) {
+      return { score: 100, total: 0, passed: 0, warnings: 0, failed: 0 };
+    }
+    let passed = 0;
+    let warnings = 0;
+    let failed = 0;
+    checks.forEach((check) => {
+      if (check.status === "pass") {
+        passed++;
+      } else if (check.status === "warning") {
+        warnings++;
+      } else {
+        failed++;
+      }
+    });
+    const total = checks.length;
+    const points = passed * 100 + warnings * 50 + failed * 0;
+    const maxPoints = total * 100;
+    const score = Math.round(points / maxPoints * 100);
+    return { score, total, passed, warnings, failed };
+  }
+  async function handleSystemAudit() {
+    try {
+      console.log("\u{1F50D} Running CTDS audit...");
+      const [collectionValidation, textStyleSync, textStyleBindings, componentBindings] = await Promise.all([
+        validateCollectionStructure(),
+        validateTextStylesAgainstVariables(),
+        validateTextStyleBindings(),
+        validateAllComponentBindings()
+      ]);
+      const combinedTextStyleSync = [
+        ...textStyleSync.auditChecks,
+        ...textStyleBindings.auditChecks
+      ];
+      const collectionScore = calculateAuditScore(collectionValidation.auditChecks);
+      const textStyleScore = calculateAuditScore(combinedTextStyleSync);
+      const componentScore = calculateAuditScore(componentBindings.auditChecks);
+      const allChecks = [
+        ...collectionValidation.auditChecks,
+        ...combinedTextStyleSync,
+        ...componentBindings.auditChecks
+      ];
+      const overallScore = calculateAuditScore(allChecks);
+      lastSystemAuditResults = {
+        collectionStructure: collectionValidation.auditChecks,
+        textStyleSync: combinedTextStyleSync,
+        componentBindings: componentBindings.auditChecks,
+        timestamp: Date.now()
+      };
+      sendMessageToUI("system-audit-result", {
+        collectionStructure: collectionValidation.auditChecks,
+        textStyleSync: combinedTextStyleSync,
+        componentBindings: componentBindings.auditChecks,
+        scores: {
+          overall: overallScore,
+          collections: collectionScore,
+          textStyles: textStyleScore,
+          components: componentScore
+        }
+      });
+      console.log("\u2705 CTDS audit complete - Score:", overallScore.score);
+    } catch (error) {
+      console.error("\u274C CTDS audit error:", error);
+      sendMessageToUI("system-audit-result", {
+        error: error instanceof Error ? error.message : "Unknown error during system audit"
+      });
     }
   }
   async function handleEnhancedAnalyze(options) {
@@ -6945,38 +7061,49 @@ ${scoringCriteria}
     try {
       const lastMetadata = lastAnalyzedMetadata;
       const lastNode = lastAnalyzedNode;
-      if (!lastMetadata && !lastNode) {
-        return null;
-      }
       const context = {
-        hasCurrentComponent: true,
         timestamp: Date.now()
       };
-      if (lastNode) {
-        context.component = {
-          name: lastNode.name,
-          type: lastNode.type,
-          id: lastNode.id
-        };
-        const selection = figma.currentPage.selection;
-        if (selection.length > 0) {
-          context.selection = {
-            count: selection.length,
-            types: selection.map((node) => node.type),
-            names: selection.map((node) => node.name)
+      if (lastMetadata || lastNode) {
+        context.hasCurrentComponent = true;
+        if (lastNode) {
+          context.component = {
+            name: lastNode.name,
+            type: lastNode.type,
+            id: lastNode.id
+          };
+          const selection = figma.currentPage.selection;
+          if (selection.length > 0) {
+            context.selection = {
+              count: selection.length,
+              types: selection.map((node) => node.type),
+              names: selection.map((node) => node.name)
+            };
+          }
+        }
+        if (lastMetadata) {
+          context.analysis = {
+            component: lastMetadata.component,
+            description: lastMetadata.description,
+            props: lastMetadata.props || [],
+            states: lastMetadata.states || [],
+            accessibility: lastMetadata.accessibility,
+            audit: lastMetadata.audit,
+            mcpReadiness: lastMetadata.mcpReadiness
           };
         }
       }
-      if (lastMetadata) {
-        context.analysis = {
-          component: lastMetadata.component,
-          description: lastMetadata.description,
-          props: lastMetadata.props || [],
-          states: lastMetadata.states || [],
-          accessibility: lastMetadata.accessibility,
-          audit: lastMetadata.audit,
-          mcpReadiness: lastMetadata.mcpReadiness
+      if (lastSystemAuditResults) {
+        context.hasSystemAudit = true;
+        context.systemAudit = {
+          timestamp: lastSystemAuditResults.timestamp,
+          collectionStructure: lastSystemAuditResults.collectionStructure,
+          textStyleSync: lastSystemAuditResults.textStyleSync,
+          componentBindings: lastSystemAuditResults.componentBindings
         };
+      }
+      if (!context.hasCurrentComponent && !context.hasSystemAudit) {
+        return null;
       }
       return context;
     } catch (error) {
@@ -7037,6 +7164,36 @@ ${scoringCriteria}
       }
       currentComponentContext += "\n";
     }
+    let systemAuditContext = "";
+    if (componentContext && componentContext.hasSystemAudit && componentContext.systemAudit) {
+      const audit = componentContext.systemAudit;
+      systemAuditContext = "\n**CTDS Audit Results (Design System Validation):**\n";
+      if (audit.collectionStructure && audit.collectionStructure.length > 0) {
+        systemAuditContext += "\n*Variable Collections:*\n";
+        audit.collectionStructure.forEach((item) => {
+          const icon = item.status === "pass" ? "\u2713" : item.status === "warning" ? "\u26A0" : "\u2717";
+          systemAuditContext += `${icon} ${item.check}${item.suggestion ? ` - ${item.suggestion}` : ""}
+`;
+        });
+      }
+      if (audit.textStyleSync && audit.textStyleSync.length > 0) {
+        systemAuditContext += "\n*Text Styles:*\n";
+        audit.textStyleSync.forEach((item) => {
+          const icon = item.status === "pass" ? "\u2713" : item.status === "warning" ? "\u26A0" : "\u2717";
+          systemAuditContext += `${icon} ${item.check}${item.suggestion ? ` - ${item.suggestion}` : ""}
+`;
+        });
+      }
+      if (audit.componentBindings && audit.componentBindings.length > 0) {
+        systemAuditContext += "\n*Component Variable Bindings:*\n";
+        audit.componentBindings.forEach((item) => {
+          const icon = item.status === "pass" ? "\u2713" : item.status === "warning" ? "\u26A0" : "\u2717";
+          systemAuditContext += `${icon} ${item.check}${item.suggestion ? ` - ${item.suggestion}` : ""}
+`;
+        });
+      }
+      systemAuditContext += "\n";
+    }
     let knowledgeContext = "";
     if (mcpResponse.sources && mcpResponse.sources.length > 0) {
       knowledgeContext = "\n**Relevant Design Systems Knowledge:**\n";
@@ -7049,21 +7206,24 @@ ${source.content}
       knowledgeContext += "\n";
     }
     const hasComponentContext = componentContext && componentContext.hasCurrentComponent;
+    const hasSystemAudit = componentContext && componentContext.hasSystemAudit;
     return `You are a specialized design systems assistant with access to comprehensive design systems knowledge. You're helping a user with their Figma plugin for design system analysis.
 
 ${conversationContext}**Current User Question:** ${userMessage}
 
-${currentComponentContext}${knowledgeContext}**Instructions:**
+${currentComponentContext}${systemAuditContext}${knowledgeContext}**Instructions:**
 1. ${hasComponentContext ? "The user is currently working on a specific component in Figma. Use the component context above to provide specific, actionable advice about their current work." : "Provide helpful, accurate answers based on the design systems knowledge provided"}
 2. ${hasComponentContext ? 'If they ask about "this component" or "my component", refer to the current component context provided above' : "If you need context about a specific component, suggest they select and analyze a component first"}
-3. Be conversational and practical in your responses
-4. When discussing components, tokens, or patterns, provide specific guidance
-5. If referencing the knowledge sources, mention them naturally in your response
-6. Keep responses focused and actionable
-7. If the user is asking about Figma-specific functionality, provide relevant plugin or design workflow advice
-8. ${hasComponentContext ? "Help them improve their current component by addressing any issues mentioned in the analysis context" : "Provide general design systems guidance"}
+3. ${hasSystemAudit ? "The user has run a CTDS Audit on their design system. Use the audit results above to answer questions about variable collections, text styles, and component variable bindings." : "If the user wants design system-level validation (variable collections, text styles, component bindings), suggest they run a CTDS Audit first."}
+4. Be conversational and practical in your responses
+5. When discussing components, tokens, or patterns, provide specific guidance
+6. If referencing the knowledge sources, mention them naturally in your response
+7. Keep responses focused and actionable
+8. If the user is asking about Figma-specific functionality, provide relevant plugin or design workflow advice
+9. ${hasComponentContext ? "Help them improve their current component by addressing any issues mentioned in the analysis context" : "Provide general design systems guidance"}
+10. ${hasSystemAudit ? "When asked about variable naming, text styles, or components using raw values, refer to the CTDS Audit results above for specific issues." : ""}
 
-${hasComponentContext ? "Since you have context about their current component, prioritize advice that directly applies to what they're working on." : "If the user wants component-specific advice, suggest they select and analyze a component in Figma first."}
+${hasComponentContext ? "Since you have context about their current component, prioritize advice that directly applies to what they're working on." : hasSystemAudit ? "Since you have CTDS Audit results, you can answer questions about variable collections, text styles, and component variable bindings." : "If the user wants component-specific advice, suggest they analyze a component. For design system validation, suggest they run a CTDS Audit."}
 
 Respond naturally and helpfully to the user's question.`;
   }

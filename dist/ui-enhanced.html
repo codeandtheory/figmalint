@@ -2235,6 +2235,9 @@
       <div class="content">
         <!-- Quick Actions Bar (shown when API key is saved) -->
         <div class="quick-actions-bar" id="quick-actions" style="display: none;">
+          <button id="quick-analyze-system" class="button button-secondary">
+            <span>CTDS Audit</span>
+          </button>
           <button id="quick-analyze-component" class="button button-primary">
             <span>Analyze Component</span>
           </button>
@@ -2337,7 +2340,30 @@
           <span>Batch Mode</span>
         </div>
 
-        <!-- Analysis Results -->
+        <!-- CTDS Audit Results (separate from component analysis) -->
+        <div id="system-results" class="hidden">
+          <div class="collapsible">
+            <div class="collapsible-header active" onclick="toggleCollapsible(this)">
+              <div class="collapsible-title">
+                <span class="collapsible-icon">▶</span>
+                <span>CTDS Audit</span>
+                <div class="tooltip">
+                  <div class="info-icon">i</div>
+                  <span class="tooltiptext">
+                    <strong>CTDS Audit</strong><br>
+                    Design system-level validations that check your variable collections, text styles, and component variable bindings across the entire file.
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="collapsible-content active" id="system-audit-content">
+              <div class="skeleton"></div>
+              <div class="skeleton" style="width: 80%;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Component Analysis Results -->
         <div id="analysis-results" class="hidden">
           <!-- Audit View -->
           <div class="collapsible">
@@ -2363,8 +2389,6 @@
               <div class="skeleton" style="width: 60%;"></div>
             </div>
           </div>
-
-
 
           <!-- Property Cheat Sheet -->
           <div class="collapsible">
@@ -2745,6 +2769,7 @@
     // Configuration UI Elements
     const apiKeyCard = document.getElementById('api-key-card');
     const quickActions = document.getElementById('quick-actions');
+    const quickAnalyzeSystemButton = document.getElementById('quick-analyze-system');
     const quickAnalyzeButton = document.getElementById('quick-analyze-component');
     const showConfigButton = document.getElementById('show-config');
     const hideConfigButton = document.getElementById('hide-config');
@@ -2753,7 +2778,11 @@
     const batchModeToggle = document.getElementById('batch-mode-toggle');
     const batchModeSwitch = document.getElementById('batch-mode-switch');
 
-    // Analysis Results Elements
+    // System Audit Results Elements
+    const systemResults = document.getElementById('system-results');
+    const systemAuditContent = document.getElementById('system-audit-content');
+
+    // Component Analysis Results Elements
     const analysisResults = document.getElementById('analysis-results');
     const auditContent = document.getElementById('audit-content');
     const propertyCheatsheet = document.getElementById('property-cheatsheet');
@@ -3146,6 +3175,7 @@
       saveKeyButton.addEventListener('click', handleSaveApiKey);
       analyzeButton.addEventListener('click', handleAnalyzeComponent);
       quickAnalyzeButton.addEventListener('click', handleAnalyzeComponent);
+      quickAnalyzeSystemButton.addEventListener('click', handleAnalyzeSystem);
       apiKeyInput.addEventListener('input', handleApiKeyChange);
       apiKeyInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter' && apiKeyInput.value.trim()) {
@@ -3899,6 +3929,24 @@
       });
     }
 
+    // Handle CTDS Audit
+    function handleAnalyzeSystem() {
+      updateStatus('Running CTDS audit...', 'info');
+
+      // Hide component results, show system results
+      analysisResults.classList.add('hidden');
+      systemResults.classList.remove('hidden');
+      
+      // Show loading state in system audit content
+      systemAuditContent.innerHTML = `
+        <div class="skeleton"></div>
+        <div class="skeleton" style="width: 80%;"></div>
+        <div class="skeleton" style="width: 60%;"></div>
+      `;
+
+      sendMessageToPlugin('analyze-system', {});
+    }
+
     // Handle Clear API Key
     function handleClearApiKey(e) {
       e.preventDefault();
@@ -3999,6 +4047,9 @@
           break;
         case 'enhanced-analysis-result':
           handleEnhancedAnalysisResult(data);
+          break;
+        case 'system-audit-result':
+          handleSystemAuditResult(data);
           break;
         case 'metadata-result':
           // Handle old message format for backward compatibility
@@ -4171,6 +4222,199 @@
       updateChatInputState();
     }
 
+    // Handle System Audit Result (CTDS Audit)
+    function handleSystemAuditResult(data) {
+      console.log('UI received system audit result:', data);
+      
+      if (data.error) {
+        updateStatus(`CTDS audit failed: ${data.error}`, 'error');
+        systemAuditContent.innerHTML = `<div style="color: var(--error); padding: 8px;">Error: ${data.error}</div>`;
+        return;
+      }
+
+      updateStatus('CTDS audit complete!', 'success');
+      
+      let html = '';
+      
+      // Score Display
+      if (data.scores && data.scores.overall) {
+        const score = data.scores.overall.score;
+        const { passed, warnings, failed, total } = data.scores.overall;
+        
+        // Determine score color
+        let scoreColor = '#22c55e'; // green
+        let scoreLabel = 'Excellent';
+        if (score < 50) {
+          scoreColor = '#ef4444'; // red
+          scoreLabel = 'Needs Work';
+        } else if (score < 75) {
+          scoreColor = '#f59e0b'; // amber
+          scoreLabel = 'Fair';
+        } else if (score < 90) {
+          scoreColor = '#22c55e'; // green
+          scoreLabel = 'Good';
+        }
+        
+        // Calculate stroke offset for circular progress
+        const circumference = 2 * Math.PI * 45; // radius = 45
+        const strokeOffset = circumference - (score / 100) * circumference;
+        
+        html += `
+          <div class="score-card" style="
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            margin-block-end: 16px;
+          ">
+            <div class="score-circle" style="position: relative; width: 100px; height: 100px; flex-shrink: 0;">
+              <svg width="100" height="100" viewBox="0 0 100 100">
+                <!-- Background circle -->
+                <circle cx="50" cy="50" r="45" fill="none" stroke="var(--border)" stroke-width="8"/>
+                <!-- Progress circle -->
+                <circle cx="50" cy="50" r="45" fill="none" stroke="${scoreColor}" stroke-width="8"
+                  stroke-linecap="round"
+                  stroke-dasharray="${circumference}"
+                  stroke-dashoffset="${strokeOffset}"
+                  transform="rotate(-90 50 50)"
+                  style="transition: stroke-dashoffset 0.5s ease;"
+                />
+              </svg>
+              <div style="
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                text-align: center;
+              ">
+                <div style="font-size: 24px; font-weight: 700; color: ${scoreColor};">${score}</div>
+                <div style="font-size: 10px; color: var(--text-secondary);">/ 100</div>
+              </div>
+            </div>
+            <div class="score-details" style="flex: 1;">
+              <div style="font-size: 14px; font-weight: 600; margin-block-end: 8px; color: ${scoreColor};">${scoreLabel}</div>
+              <div style="display: flex; gap: 12px; font-size: 11px;">
+                <div style="display: flex; align-items: center; gap: 4px;">
+                  <span style="color: #22c55e;">${ICO.checkCircle}</span>
+                  <span style="color: var(--text-secondary);">${passed} passed</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                  <span style="color: #f59e0b;">${ICO.warnTriangle}</span>
+                  <span style="color: var(--text-secondary);">${warnings} warnings</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                  <span style="color: #ef4444;">${ICO.xCircle}</span>
+                  <span style="color: var(--text-secondary);">${failed} failed</span>
+                </div>
+              </div>
+              <div style="font-size: 10px; color: var(--text-tertiary); margin-block-start: 6px;">${total} checks total</div>
+            </div>
+          </div>
+        `;
+      }
+      
+      // Variable Collection Structure
+      if (data.collectionStructure && data.collectionStructure.length > 0) {
+        html += '<div class="audit-section">';
+        html += `
+          <div class="section-header">
+            <h4 class="section-title">Variable Collections</h4>
+            <div class="tooltip">
+              <div class="info-icon">i</div>
+              <span class="tooltiptext">
+                <strong>Variable Collection Structure</strong><br>
+                Validates that your Figma variable collections follow design system best practices.
+              </span>
+            </div>
+          </div>
+        `;
+
+        data.collectionStructure.forEach(item => {
+          const status = item.status;
+          html += `
+            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}">
+              <span class="audit-status ${status}">${
+                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
+              }</span>
+              <span class="audit-label">${item.check}</span>
+              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+
+      // Text Styles
+      if (data.textStyleSync && data.textStyleSync.length > 0) {
+        html += '<div class="audit-section">';
+        html += `
+          <div class="section-header">
+            <h4 class="section-title">Text Styles</h4>
+            <div class="tooltip">
+              <div class="info-icon">i</div>
+              <span class="tooltiptext">
+                <strong>Text Style & Variable Sync</strong><br>
+                Validates that font-family variables have matching text styles, and vice versa.
+              </span>
+            </div>
+          </div>
+        `;
+
+        data.textStyleSync.forEach(item => {
+          const status = item.status;
+          html += `
+            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}">
+              <span class="audit-status ${status}">${
+                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
+              }</span>
+              <span class="audit-label">${item.check}</span>
+              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+
+      // Component Variables
+      if (data.componentBindings && data.componentBindings.length > 0) {
+        html += '<div class="audit-section">';
+        html += `
+          <div class="section-header">
+            <h4 class="section-title">Component Variables</h4>
+            <div class="tooltip">
+              <div class="info-icon">i</div>
+              <span class="tooltiptext">
+                <strong>Component Variable Bindings</strong><br>
+                Validates that components use theme variables instead of raw/hard-coded values.
+              </span>
+            </div>
+          </div>
+        `;
+
+        data.componentBindings.forEach(item => {
+          const status = item.status;
+          html += `
+            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}">
+              <span class="audit-status ${status}">${
+                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
+              }</span>
+              <span class="audit-label">${item.check}</span>
+              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+
+      if (!html) {
+        html = '<div style="color: var(--text-secondary); font-size: 12px; padding: 8px;">No system-level checks available. Make sure you have variable collections set up.</div>';
+      }
+
+      systemAuditContent.innerHTML = html;
+    }
+
     // Handle Enhanced Analysis Result
     function handleEnhancedAnalysisResult(data) {
       // Debug logging
@@ -4219,6 +4463,7 @@
       // Update Audit View
       if (data.audit) {
         updateAuditView(data.audit);
+        updateSystemAuditView(data.audit);
       } else {
         // Show realistic audit with actual issues instead of fake passing scores
         const basicAudit = {
@@ -4238,6 +4483,7 @@
         };
         console.log('Using fallback basic audit with real issues:', basicAudit);
         updateAuditView(basicAudit);
+        updateSystemAuditView(basicAudit);
       }
 
       // Update Property Cheat Sheet
@@ -4613,144 +4859,6 @@
         html += '</div>';
       }
 
-      // Variable Collection Structure Audit
-      if (audit.collectionStructure && audit.collectionStructure.length > 0) {
-        html += '<div class="audit-section">';
-        html += `
-          <div class="section-header">
-            <h4 class="section-title">Variable Collections</h4>
-            <div class="tooltip">
-              <div class="info-icon">i</div>
-              <span class="tooltiptext">
-                <strong>Variable Collection Structure</strong><br>
-                Validates that your Figma variable collections follow design system best practices. Checks for Primitives (color, space), Brand (color, typography), and Theme (colors with bg/text/border, typography) collections with proper category organization.
-              </span>
-            </div>
-          </div>
-        `;
-
-        audit.collectionStructure.forEach(item => {
-          totalCount++;
-          const status = item.status;
-          if (status === 'pass') passCount++;
-
-          // Medium weight for collection structure (1.5x)
-          weightedTotalScore += 1.5;
-          if (status === 'pass') {
-            weightedPassScore += 1.5;
-            console.log(`[DEBUG][COLLECTIONS] "${item.check}" = PASS → +1.5 points`);
-          } else if (status === 'warning') {
-            weightedPassScore += 0.5; // Partial credit for warnings
-            console.log(`[DEBUG][COLLECTIONS] "${item.check}" = WARNING → +0.5 points`);
-          } else {
-            console.log(`[DEBUG][COLLECTIONS] "${item.check}" = FAIL → 0 points`);
-          }
-
-          html += `
-            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}">
-              <span class="audit-status ${status}">${
-                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
-              }</span>
-              <span class="audit-label">${item.check}</span>
-              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
-            </div>
-          `;
-        });
-        html += '</div>';
-      }
-
-      // Text Style & Font-Family Sync Audit
-      if (audit.textStyleSync && audit.textStyleSync.length > 0) {
-        html += '<div class="audit-section">';
-        html += `
-          <div class="section-header">
-            <h4 class="section-title">Text Styles</h4>
-            <div class="tooltip">
-              <div class="info-icon">i</div>
-              <span class="tooltiptext">
-                <strong>Text Style & Variable Sync</strong><br>
-                Validates that font-family variables (display, heading, body, label) have matching text styles, and vice versa. Ensures consistency between your typography variables and text styles.
-              </span>
-            </div>
-          </div>
-        `;
-
-        audit.textStyleSync.forEach(item => {
-          totalCount++;
-          const status = item.status;
-          if (status === 'pass') passCount++;
-
-          // Medium weight for text style sync (1.5x)
-          weightedTotalScore += 1.5;
-          if (status === 'pass') {
-            weightedPassScore += 1.5;
-            console.log(`[DEBUG][TEXTSTYLES] "${item.check}" = PASS → +1.5 points`);
-          } else if (status === 'warning') {
-            weightedPassScore += 0.5; // Partial credit for warnings
-            console.log(`[DEBUG][TEXTSTYLES] "${item.check}" = WARNING → +0.5 points`);
-          } else {
-            console.log(`[DEBUG][TEXTSTYLES] "${item.check}" = FAIL → 0 points`);
-          }
-
-          html += `
-            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}">
-              <span class="audit-status ${status}">${
-                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
-              }</span>
-              <span class="audit-label">${item.check}</span>
-              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
-            </div>
-          `;
-        });
-        html += '</div>';
-      }
-
-      // Component Variable Bindings Audit
-      if (audit.componentBindings && audit.componentBindings.length > 0) {
-        html += '<div class="audit-section">';
-        html += `
-          <div class="section-header">
-            <h4 class="section-title">Component Variables</h4>
-            <div class="tooltip">
-              <div class="info-icon">i</div>
-              <span class="tooltiptext">
-                <strong>Component Variable Bindings</strong><br>
-                Validates that components use theme variables instead of raw/hard-coded values for fills, strokes, spacing, corner radius, typography, and effects. Components should reference variables from your Theme collection.
-              </span>
-            </div>
-          </div>
-        `;
-
-        audit.componentBindings.forEach(item => {
-          totalCount++;
-          const status = item.status;
-          if (status === 'pass') passCount++;
-
-          // High weight for component bindings (2x)
-          weightedTotalScore += 2;
-          if (status === 'pass') {
-            weightedPassScore += 2;
-            console.log(`[DEBUG][COMPBIND] "${item.check}" = PASS → +2 points`);
-          } else if (status === 'warning') {
-            weightedPassScore += 0.5; // Partial credit for warnings
-            console.log(`[DEBUG][COMPBIND] "${item.check}" = WARNING → +0.5 points`);
-          } else {
-            console.log(`[DEBUG][COMPBIND] "${item.check}" = FAIL → 0 points`);
-          }
-
-          html += `
-            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}">
-              <span class="audit-status ${status}">${
-                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
-              }</span>
-              <span class="audit-label">${item.check}</span>
-              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
-            </div>
-          `;
-        });
-        html += '</div>';
-      }
-
       // Layer Naming Audit (Phase 3) — Tree layout grouped by parent path
       if (currentNamingIssues && currentNamingIssues.length > 0) {
         html += '<div class="audit-section">';
@@ -4895,6 +5003,120 @@
 
       // Store globally so AI Interpretation section can reference it
       currentAuditScore = score;
+    }
+
+    // Update System Audit View (design system level checks)
+    function updateSystemAuditView(audit) {
+      const systemAuditContent = document.getElementById('system-audit-content');
+      if (!systemAuditContent) return;
+
+      let html = '';
+      
+      const hasContent = 
+        (audit.collectionStructure && audit.collectionStructure.length > 0) ||
+        (audit.textStyleSync && audit.textStyleSync.length > 0) ||
+        (audit.componentBindings && audit.componentBindings.length > 0);
+
+      if (!hasContent) {
+        html = '<div style="color: var(--text-secondary); font-size: 12px; padding: 8px;">No system-level checks available. Make sure you have variable collections set up.</div>';
+        systemAuditContent.innerHTML = html;
+        return;
+      }
+
+      // Variable Collection Structure Audit
+      if (audit.collectionStructure && audit.collectionStructure.length > 0) {
+        html += '<div class="audit-section">';
+        html += `
+          <div class="section-header">
+            <h4 class="section-title">Variable Collections</h4>
+            <div class="tooltip">
+              <div class="info-icon">i</div>
+              <span class="tooltiptext">
+                <strong>Variable Collection Structure</strong><br>
+                Validates that your Figma variable collections follow design system best practices. Checks for Primitives (color, space), Brand (color, typography), and Theme (colors with bg/text/border, typography) collections with proper category organization.
+              </span>
+            </div>
+          </div>
+        `;
+
+        audit.collectionStructure.forEach(item => {
+          const status = item.status;
+          html += `
+            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}">
+              <span class="audit-status ${status}">${
+                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
+              }</span>
+              <span class="audit-label">${item.check}</span>
+              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+
+      // Text Style & Font-Family Sync Audit
+      if (audit.textStyleSync && audit.textStyleSync.length > 0) {
+        html += '<div class="audit-section">';
+        html += `
+          <div class="section-header">
+            <h4 class="section-title">Text Styles</h4>
+            <div class="tooltip">
+              <div class="info-icon">i</div>
+              <span class="tooltiptext">
+                <strong>Text Style & Variable Sync</strong><br>
+                Validates that font-family variables (display, heading, body, label) have matching text styles, and vice versa. Ensures consistency between your typography variables and text styles.
+              </span>
+            </div>
+          </div>
+        `;
+
+        audit.textStyleSync.forEach(item => {
+          const status = item.status;
+          html += `
+            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}">
+              <span class="audit-status ${status}">${
+                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
+              }</span>
+              <span class="audit-label">${item.check}</span>
+              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+
+      // Component Variable Bindings Audit
+      if (audit.componentBindings && audit.componentBindings.length > 0) {
+        html += '<div class="audit-section">';
+        html += `
+          <div class="section-header">
+            <h4 class="section-title">Component Variables</h4>
+            <div class="tooltip">
+              <div class="info-icon">i</div>
+              <span class="tooltiptext">
+                <strong>Component Variable Bindings</strong><br>
+                Validates that components use theme variables instead of raw/hard-coded values for fills, strokes, spacing, corner radius, typography, and effects. Components should reference variables from your Theme collection.
+              </span>
+            </div>
+          </div>
+        `;
+
+        audit.componentBindings.forEach(item => {
+          const status = item.status;
+          html += `
+            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}">
+              <span class="audit-status ${status}">${
+                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
+              }</span>
+              <span class="audit-label">${item.check}</span>
+              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+
+      systemAuditContent.innerHTML = html;
     }
 
     // Update Property Cheat Sheet
