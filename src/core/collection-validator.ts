@@ -319,18 +319,19 @@ export async function validateCollectionStructure(
           if (subResult.patternValidation) {
             const { allMatch, invalidNames, patternDescription, examples } = subResult.patternValidation;
             if (subResult.found.length === 0) {
-              // No sub-categories at all
+              // No valid sub-categories at all - this is a real problem
               auditChecks.push({
                 check: `${requirement.displayName} ${subResult.category} naming`,
                 status: 'warning',
-                suggestion: `"${matchingCollection.name}" ${subResult.category} category has no sub-categories. Add variables following ${patternDescription} (e.g., ${examples.slice(0, 3).join(', ')}).`
+                suggestion: `"${matchingCollection.name}" ${subResult.category} category has no sub-categories following ${patternDescription}. Add variables like ${examples.slice(0, 3).join(', ')}.`
               });
-            } else if (!allMatch && invalidNames.length > 0) {
-              // Some sub-categories don't match the pattern
+            } else {
+              // Has valid sub-categories - pass! (ignore category names like "display", "heading")
+              // The "invalidNames" might just be intermediate category names in a 3-level structure
               auditChecks.push({
                 check: `${requirement.displayName} ${subResult.category} naming`,
-                status: 'warning',
-                suggestion: `"${matchingCollection.name}" ${subResult.category} has sub-categories not following ${patternDescription}: ${invalidNames.join(', ')}. Expected names like ${examples.slice(0, 3).join(', ')}.`
+                status: 'pass',
+                suggestion: `"${matchingCollection.name}" ${subResult.category} has valid sizes: ${subResult.found.slice(0, 5).join(', ')}${subResult.found.length > 5 ? '...' : ''}`
               });
             }
           }
@@ -426,9 +427,11 @@ function extractCategories(variables: Variable[]): Map<string, Set<string>> {
       categories.set(topCategory, new Set<string>());
     }
     
-    // Get sub-category if exists
-    if (parts.length > 1) {
-      const subCategory = parts[1].toLowerCase().trim();
+    // Get sub-categories if they exist
+    // Add ALL levels after the first as sub-categories
+    // This handles both 2-level (font-size/xl) and 3-level (font-size/display/xl) structures
+    for (let i = 1; i < parts.length; i++) {
+      const subCategory = parts[i].toLowerCase().trim();
       categories.get(topCategory)!.add(subCategory);
     }
   }
@@ -545,8 +548,8 @@ function validateCategories(
   const hasAllSubCategories = subCategoryResults.every(r => {
     // For exact sub-category matches
     if (r.missing.length > 0) return false;
-    // For pattern validation
-    if (r.patternValidation && !r.patternValidation.allMatch) return false;
+    // For pattern validation - pass if at least some match (supports 3-level structures)
+    if (r.patternValidation && r.patternValidation.allMatch === false && r.found.length === 0) return false;
     // For mirror validation
     if (r.mirrorValidation && !r.mirrorValidation.isFullMatch) return false;
     return true;

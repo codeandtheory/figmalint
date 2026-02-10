@@ -864,13 +864,13 @@
                 auditChecks.push({
                   check: `${requirement.displayName} ${subResult.category} naming`,
                   status: "warning",
-                  suggestion: `"${matchingCollection.name}" ${subResult.category} category has no sub-categories. Add variables following ${patternDescription} (e.g., ${examples.slice(0, 3).join(", ")}).`
+                  suggestion: `"${matchingCollection.name}" ${subResult.category} category has no sub-categories following ${patternDescription}. Add variables like ${examples.slice(0, 3).join(", ")}.`
                 });
-              } else if (!allMatch && invalidNames.length > 0) {
+              } else {
                 auditChecks.push({
                   check: `${requirement.displayName} ${subResult.category} naming`,
-                  status: "warning",
-                  suggestion: `"${matchingCollection.name}" ${subResult.category} has sub-categories not following ${patternDescription}: ${invalidNames.join(", ")}. Expected names like ${examples.slice(0, 3).join(", ")}.`
+                  status: "pass",
+                  suggestion: `"${matchingCollection.name}" ${subResult.category} has valid sizes: ${subResult.found.slice(0, 5).join(", ")}${subResult.found.length > 5 ? "..." : ""}`
                 });
               }
             }
@@ -945,8 +945,8 @@
       if (!categories.has(topCategory)) {
         categories.set(topCategory, /* @__PURE__ */ new Set());
       }
-      if (parts.length > 1) {
-        const subCategory = parts[1].toLowerCase().trim();
+      for (let i = 1; i < parts.length; i++) {
+        const subCategory = parts[i].toLowerCase().trim();
         categories.get(topCategory).add(subCategory);
       }
     }
@@ -1031,7 +1031,7 @@
     const hasAllCategories = missingCategories.length === 0;
     const hasAllSubCategories = subCategoryResults.every((r) => {
       if (r.missing.length > 0) return false;
-      if (r.patternValidation && !r.patternValidation.allMatch) return false;
+      if (r.patternValidation && r.patternValidation.allMatch === false && r.found.length === 0) return false;
       if (r.mirrorValidation && !r.mirrorValidation.isFullMatch) return false;
       return true;
     });
