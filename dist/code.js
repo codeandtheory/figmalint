@@ -605,7 +605,7 @@
           suggestion: `${bindingIssues.length} text style(s) use incorrectly named variables. ${issueDescriptions.join("; ")}${bindingIssues.length > 2 ? ` and ${bindingIssues.length - 2} more...` : ""}`
         });
       }
-      if (fullyCompliantStyles === totalStyles && totalStyles > 0) {
+      if (unboundIssues.length === 0 && bindingIssues.length === 0 && totalStyles > 0) {
         auditChecks.push({
           check: "Text style variable bindings",
           status: "pass",

@@ -743,7 +743,7 @@ export async function validateTextStylesAgainstVariables(): Promise<{
           suggestion: `Font-family variables missing matching text styles: ${variablesMissingStyles.join(', ')}. Create text styles like "${variablesMissingStyles[0]}/..." to match.`
         });
       }
-      
+
       if (stylesMissingVariables.length > 0) {
         auditChecks.push({
           check: 'Font-family variables for text styles',
@@ -751,7 +751,8 @@ export async function validateTextStylesAgainstVariables(): Promise<{
           suggestion: `Text styles missing matching font-family variables: ${stylesMissingVariables.join(', ')}. Add font-family/${stylesMissingVariables[0]} to your Theme collection.`
         });
       }
-      
+
+      // Only show pass message if there are NO mismatches
       if (isFullMatch && fontFamilyVariables.length > 0) {
         auditChecks.push({
           check: 'Text styles & font-family sync',
@@ -1002,17 +1003,17 @@ export async function validateTextStyleBindings(): Promise<{
     if (unboundIssues.length > 0) {
       // Report unbound properties
       const sampleIssues = unboundIssues.slice(0, 3);
-      const issueDescriptions = sampleIssues.map(s => 
+      const issueDescriptions = sampleIssues.map(s =>
         `"${s.styleName}" missing: ${s.unboundProps.join(', ')}`
       );
-      
+
       auditChecks.push({
         check: 'Text style variable bindings',
         status: 'warning',
         suggestion: `${unboundIssues.length} text style(s) have raw values instead of theme variables. ${issueDescriptions.join('; ')}${unboundIssues.length > 3 ? ` and ${unboundIssues.length - 3} more...` : ''}`
       });
     }
-    
+
     if (bindingIssues.length > 0) {
       // Report incorrect bindings
       const sampleIssues = bindingIssues.slice(0, 2);
@@ -1020,15 +1021,16 @@ export async function validateTextStyleBindings(): Promise<{
         const wrongBinding = s.incorrectBindings[0];
         return `"${s.styleName}" ${wrongBinding.prop} uses "${wrongBinding.actual}" but should use "${wrongBinding.expected}"`;
       });
-      
+
       auditChecks.push({
         check: 'Text style variable naming',
         status: 'warning',
         suggestion: `${bindingIssues.length} text style(s) use incorrectly named variables. ${issueDescriptions.join('; ')}${bindingIssues.length > 2 ? ` and ${bindingIssues.length - 2} more...` : ''}`
       });
     }
-    
-    if (fullyCompliantStyles === totalStyles && totalStyles > 0) {
+
+    // Only show pass message if there are NO issues at all
+    if (unboundIssues.length === 0 && bindingIssues.length === 0 && totalStyles > 0) {
       auditChecks.push({
         check: 'Text style variable bindings',
         status: 'pass',
