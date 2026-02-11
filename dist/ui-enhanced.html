@@ -3282,6 +3282,19 @@
       content.classList.toggle('active');
     }
 
+    // Toggle audit detail visibility
+    function toggleAuditDetail(itemId) {
+      const detail = document.getElementById(itemId);
+      const icon = document.getElementById(`icon-${itemId}`);
+      if (detail) {
+        const isHidden = detail.style.display === 'none';
+        detail.style.display = isHidden ? 'block' : 'none';
+        if (icon) {
+          icon.textContent = isHidden ? '▲' : '▼';
+        }
+      }
+    }
+
     // JS-based viewport-aware tooltip system
     (function initTooltipSystem() {
       let activeTooltip = null;
@@ -3624,15 +3637,27 @@
           </div>
         `;
 
-        data.collectionStructure.forEach(item => {
+        data.collectionStructure.forEach((item, index) => {
           const status = item.status;
+          const hasLongSuggestion = item.suggestion && item.suggestion.length > 100;
+          const itemId = `coll-${index}`;
+
           html += `
-            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}">
-              <span class="audit-status ${status}">${
-                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
-              }</span>
-              <span class="audit-label">${item.check}</span>
-              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
+            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}" style="flex-direction: column; align-items: flex-start;">
+              <div style="display: flex; align-items: center; width: 100%; cursor: ${hasLongSuggestion ? 'pointer' : 'default'};" ${hasLongSuggestion ? `onclick="toggleAuditDetail('${itemId}')"` : ''}>
+                <span class="audit-status ${status}">${
+                  status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
+                }</span>
+                <span class="audit-label" style="flex: 1;">${item.check}</span>
+                ${hasLongSuggestion ? `<span class="collapsible-icon" id="icon-${itemId}" style="font-size: 10px; margin-left: 8px;">▼</span>` : ''}
+              </div>
+              ${item.suggestion && hasLongSuggestion ? `
+                <div id="${itemId}" class="audit-detail" style="display: none; margin-top: 8px; padding: 8px; background: var(--bg-tertiary); border-radius: 4px; font-size: 11px; line-height: 1.5; color: var(--text-secondary); width: 100%; box-sizing: border-box;">
+                  ${item.suggestion}
+                </div>
+              ` : item.suggestion && !hasLongSuggestion ? `
+                <div style="margin-top: 4px; font-size: 11px; color: var(--text-secondary);">${item.suggestion}</div>
+              ` : ''}
             </div>
           `;
         });
@@ -3655,15 +3680,27 @@
           </div>
         `;
 
-        data.textStyleSync.forEach(item => {
+        data.textStyleSync.forEach((item, index) => {
           const status = item.status;
+          const hasLongSuggestion = item.suggestion && item.suggestion.length > 100;
+          const itemId = `text-${index}`;
+
           html += `
-            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}">
-              <span class="audit-status ${status}">${
-                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
-              }</span>
-              <span class="audit-label">${item.check}</span>
-              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
+            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}" style="flex-direction: column; align-items: flex-start;">
+              <div style="display: flex; align-items: center; width: 100%; cursor: ${hasLongSuggestion ? 'pointer' : 'default'};" ${hasLongSuggestion ? `onclick="toggleAuditDetail('${itemId}')"` : ''}>
+                <span class="audit-status ${status}">${
+                  status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
+                }</span>
+                <span class="audit-label" style="flex: 1;">${item.check}</span>
+                ${hasLongSuggestion ? `<span class="collapsible-icon" id="icon-${itemId}" style="font-size: 10px; margin-left: 8px;">▼</span>` : ''}
+              </div>
+              ${item.suggestion && hasLongSuggestion ? `
+                <div id="${itemId}" class="audit-detail" style="display: none; margin-top: 8px; padding: 8px; background: var(--bg-tertiary); border-radius: 4px; font-size: 11px; line-height: 1.5; color: var(--text-secondary); width: 100%; box-sizing: border-box;">
+                  ${item.suggestion}
+                </div>
+              ` : item.suggestion && !hasLongSuggestion ? `
+                <div style="margin-top: 4px; font-size: 11px; color: var(--text-secondary);">${item.suggestion}</div>
+              ` : ''}
             </div>
           `;
         });
@@ -3686,15 +3723,27 @@
           </div>
         `;
 
-        data.componentBindings.forEach(item => {
+        data.componentBindings.forEach((item, index) => {
           const status = item.status;
+          const hasLongSuggestion = item.suggestion && item.suggestion.length > 100;
+          const itemId = `comp-${index}`;
+
           html += `
-            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}">
-              <span class="audit-status ${status}">${
-                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
-              }</span>
-              <span class="audit-label">${item.check}</span>
-              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
+            <div class="audit-item ${status === 'pass' ? 'pass-item' : status === 'warning' ? 'warning-item' : 'fail-item'}" style="flex-direction: column; align-items: flex-start;">
+              <div style="display: flex; align-items: center; width: 100%; cursor: ${hasLongSuggestion ? 'pointer' : 'default'};" ${hasLongSuggestion ? `onclick="toggleAuditDetail('${itemId}')"` : ''}>
+                <span class="audit-status ${status}">${
+                  status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
+                }</span>
+                <span class="audit-label" style="flex: 1;">${item.check}</span>
+                ${hasLongSuggestion ? `<span class="collapsible-icon" id="icon-${itemId}" style="font-size: 10px; margin-left: 8px;">▼</span>` : ''}
+              </div>
+              ${item.suggestion && hasLongSuggestion ? `
+                <div id="${itemId}" class="audit-detail" style="display: none; margin-top: 8px; padding: 8px; background: var(--bg-tertiary); border-radius: 4px; font-size: 11px; line-height: 1.5; color: var(--text-secondary); width: 100%; box-sizing: border-box;">
+                  ${item.suggestion}
+                </div>
+              ` : item.suggestion && !hasLongSuggestion ? `
+                <div style="margin-top: 4px; font-size: 11px; color: var(--text-secondary);">${item.suggestion}</div>
+              ` : ''}
             </div>
           `;
         });
