@@ -1206,18 +1206,7 @@
       flex-direction: column;
     }
 
-    /* Chat Interface Styles - Cleaner Layout */
-    #content-chat .content {
-      overflow: hidden;
-    }
-
-    .chat-wrapper {
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-      min-height: 0;
-      overflow: hidden;
-    }
+    /* Chat Interface Styles - Simplified */
 
     .chat-header {
       display: flex;
@@ -2280,18 +2269,18 @@
 
     <!-- Tab Content: Chat -->
     <div class="tab-content" id="content-chat">
-      <div class="content">
-        <div class="chat-wrapper">
-                    <!-- API Key Configuration (Required for Chat) -->
-          <div class="collapsible" id="api-key-card-chat">
-            <div class="collapsible-header active" onclick="toggleCollapsible(this)">
-              <div class="collapsible-title">
-                <span class="collapsible-icon">▶</span>
-                <span>Chat Configuration</span>
-              </div>
-            </div>
+      <div class="content" style="display: flex; flex-direction: column; padding: 0; overflow: hidden;">
 
-            <div class="collapsible-content active" id="config-content-chat">
+        <!-- API Key Configuration (Collapsible) -->
+        <div class="collapsible" id="api-key-card-chat" style="flex-shrink: 0; margin: 12px 12px 0 12px;">
+          <div class="collapsible-header active" onclick="toggleCollapsible(this)">
+            <div class="collapsible-title">
+              <span class="collapsible-icon">▶</span>
+              <span>Chat Configuration</span>
+            </div>
+          </div>
+
+          <div class="collapsible-content active" id="config-content-chat">
               <!-- Provider Selection -->
               <div class="form-group">
                 <label for="provider-select">AI Provider</label>
@@ -2352,70 +2341,54 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- Chat Messages Area (Takes remaining space) -->
+        <div style="flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 12px; padding-top: 0;">
 
           <!-- Chat Header -->
-          <div class="chat-header">
-            <div class="chat-title">
-              <h2>Design Systems Chat</h2>
-            </div>
-            <button class="button button-ghost" id="clear-chat" title="Clear chat history">
-              <span class="ico"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></span> Clear
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; flex-shrink: 0;">
+            <h3 style="font-size: 12px; font-weight: 600; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">Design Systems Chat</h3>
+            <button class="button button-ghost" id="clear-chat" title="Clear chat history" style="padding: 4px 8px; font-size: 11px;">
+              Clear
             </button>
           </div>
 
-          <!-- Component Context (if available) -->
-          <div id="component-context-indicator" class="hidden component-context">
-            <div class="context-badge">
-              <span class="ico"><svg viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg></span> Component Context Available
-            </div>
-            <div id="current-component-info" class="context-info">
-              <!-- Component info will be injected here -->
-            </div>
-          </div>
-
-          <!-- Chat Empty State -->
-          <div id="chat-empty" class="chat-empty">
-            <div class="chat-empty-content">
-              <span class="chat-empty-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/></svg></span>
-              <div class="chat-empty-text">
-                <h3>Ask me about design systems!</h3>
-                <p>I have access to comprehensive design systems knowledge and can help with components, tokens, patterns, and best practices.</p>
-              </div>
-
-              <!-- Simplified Suggestions -->
-              <div id="chat-suggestions" class="chat-suggestions">
-                <!-- Suggestions will be populated by JavaScript -->
+          <!-- Chat Messages Container (Scrollable) -->
+          <div id="chat-messages" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; min-height: 0;">
+            <!-- Empty state -->
+            <div id="chat-empty" style="flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; padding: 20px;">
+              <div>
+                <div style="font-size: 32px; opacity: 0.2; margin-bottom: 8px;">💬</div>
+                <h4 style="font-size: 14px; margin: 0 0 4px 0;">Ask about design systems!</h4>
+                <p style="font-size: 12px; color: var(--text-tertiary); margin: 0;">Get help with components, tokens, patterns, and best practices.</p>
               </div>
             </div>
+            <!-- Messages will be added here -->
           </div>
 
-          <!-- Chat Messages Container -->
-          <div id="chat-container" class="chat-container hidden">
-            <div id="chat-messages" class="chat-messages">
-              <!-- Chat messages will be added here -->
-            </div>
-          </div>
-
-          <!-- Chat Input -->
-          <div class="chat-input-container">
-            <div class="chat-input-wrapper">
+          <!-- Chat Input (Fixed at bottom) -->
+          <div style="flex-shrink: 0; padding-top: 12px;">
+            <div style="display: flex; gap: 8px; align-items: flex-end; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px;">
               <textarea
                 id="chat-input"
-                placeholder="Ask about design systems, components, tokens, or best practices..."
+                placeholder="Ask about design systems..."
                 rows="1"
                 disabled
+                style="flex: 1; border: none; background: transparent; resize: none; font-size: 12px; line-height: 1.5; outline: none; min-height: 20px; max-height: 100px; padding: 0;"
               ></textarea>
-              <button id="send-chat" class="chat-send-button" disabled title="Send message">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <button id="send-chat" disabled title="Send message" style="background: var(--interactive); color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; flex-shrink: 0;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="22" y1="2" x2="11" y2="13"></line>
                   <polygon points="22,2 15,22 11,13 2,9"></polygon>
                 </svg>
               </button>
             </div>
-            <div id="chat-status" class="chat-status hidden">
+            <div id="chat-status" class="hidden" style="margin-top: 4px; font-size: 11px; color: var(--text-secondary);">
               <span class="chat-status-text">Thinking...</span>
             </div>
           </div>
+
         </div>
       </div>
     </div>
@@ -2643,7 +2616,6 @@
 
     // Chat Elements
     const chatEmpty = document.getElementById('chat-empty');
-    const chatContainer = document.getElementById('chat-container');
     const chatMessages = document.getElementById('chat-messages');
     const chatInput = document.getElementById('chat-input');
     const sendChatButton = document.getElementById('send-chat');
@@ -6040,6 +6012,11 @@
         return;
       }
 
+      // Hide empty state on first message
+      if (chatEmpty && !chatEmpty.classList.contains('hidden')) {
+        chatEmpty.classList.add('hidden');
+      }
+
       // Add user message to chat
       addChatMessage('user', message);
 
@@ -6048,10 +6025,6 @@
       chatInput.disabled = true;
       sendChatButton.disabled = true;
       isWaitingForResponse = true;
-
-      // Show container and hide empty state
-      chatContainer.classList.remove('hidden');
-      chatEmpty.classList.add('hidden');
 
       // Show loading state
       showChatLoading(true);
@@ -6115,9 +6088,13 @@
 
     function handleChatHistoryCleared() {
       chatHistory = [];
-      chatMessages.innerHTML = '';
-      chatContainer.classList.add('hidden');
-      chatEmpty.classList.remove('hidden');
+      // Remove all message elements, keep only the empty state
+      const messages = chatMessages.querySelectorAll('.chat-message');
+      messages.forEach(msg => msg.remove());
+      // Show empty state again
+      if (chatEmpty) {
+        chatEmpty.classList.remove('hidden');
+      }
       updateChatComponentContext();
       updateStatus('Chat history cleared', 'success');
     }
