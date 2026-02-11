@@ -958,7 +958,17 @@ export async function validateTextStyleBindings(): Promise<{
       
       const isFullyBound = unboundProperties.length === 0;
       const hasCorrectBindings = boundProperties.every(b => b.isCorrectBinding);
-      
+
+      // Debug logging for first few styles to help diagnose issues
+      if (results.length < 3) {
+        console.log(`🔤 [TEXT BINDING] Style "${style.name}":`);
+        console.log(`  - Unbound: ${unboundProperties.length > 0 ? unboundProperties.join(', ') : 'none'}`);
+        console.log(`  - Bound: ${boundProperties.length}`);
+        boundProperties.forEach(bp => {
+          console.log(`    • ${bp.property}: "${bp.variableName}" ${bp.isCorrectBinding ? '✓' : '✗ (expected: ' + bp.expectedPattern + ')'}`);
+        });
+      }
+
       results.push({
         styleName: style.name,
         category,
@@ -1001,31 +1011,56 @@ export async function validateTextStyleBindings(): Promise<{
     const bindingIssues = stylesWithIssues.filter(s => s.incorrectBindings.length > 0);
     
     if (unboundIssues.length > 0) {
-      // Report unbound properties
+      // Report unbound properties with detailed examples
       const sampleIssues = unboundIssues.slice(0, 3);
-      const issueDescriptions = sampleIssues.map(s =>
-        `"${s.styleName}" missing: ${s.unboundProps.join(', ')}`
-      );
+      const issueDescriptions = sampleIssues.map(s => {
+        const propsDetail = s.unboundProps.map(prop => {
+          // Provide helpful suggestion for each property
+          const style = results.find(r => r.styleName === s.styleName);
+          if (style) {
+            const category = style.category;
+            const size = style.size;
+            switch (prop) {
+              case 'fontFamily':
+                return `${prop} (bind to font-family/${category})`;
+              case 'fontSize':
+                return `${prop} (bind to font-size/${category}/${size})`;
+              case 'fontWeight':
+                return `${prop} (bind to font-weight/${category}/...)`;
+              case 'lineHeight':
+                return `${prop} (bind to line-height/${category}/${size})`;
+              case 'letterSpacing':
+                return `${prop} (bind to letter-spacing/${category}/${size})`;
+              default:
+                return prop;
+            }
+          }
+          return prop;
+        });
+        return `"${s.styleName}": ${propsDetail.join(', ')}`;
+      });
 
       auditChecks.push({
         check: 'Text style variable bindings',
         status: 'warning',
-        suggestion: `${unboundIssues.length} text style(s) have raw values instead of theme variables. ${issueDescriptions.join('; ')}${unboundIssues.length > 3 ? ` and ${unboundIssues.length - 3} more...` : ''}`
+        suggestion: `${unboundIssues.length} text style(s) have raw values instead of theme variables. Examples: ${issueDescriptions.join(' | ')}${unboundIssues.length > 3 ? ` | +${unboundIssues.length - 3} more` : ''}. Bind each typography property to its corresponding variable.`
       });
     }
 
     if (bindingIssues.length > 0) {
-      // Report incorrect bindings
+      // Report incorrect bindings with detailed examples
       const sampleIssues = bindingIssues.slice(0, 2);
       const issueDescriptions = sampleIssues.map(s => {
-        const wrongBinding = s.incorrectBindings[0];
-        return `"${s.styleName}" ${wrongBinding.prop} uses "${wrongBinding.actual}" but should use "${wrongBinding.expected}"`;
+        const examples = s.incorrectBindings.slice(0, 2).map(b =>
+          `${b.prop}: "${b.actual}" → should be "${b.expected}"`
+        );
+        return `"${s.styleName}": ${examples.join(', ')}`;
       });
 
       auditChecks.push({
         check: 'Text style variable naming',
         status: 'warning',
-        suggestion: `${bindingIssues.length} text style(s) use incorrectly named variables. ${issueDescriptions.join('; ')}${bindingIssues.length > 2 ? ` and ${bindingIssues.length - 2} more...` : ''}`
+        suggestion: `${bindingIssues.length} text style(s) use incorrectly named variables. Examples: ${issueDescriptions.join(' | ')}${bindingIssues.length > 2 ? ` | +${bindingIssues.length - 2} more` : ''}. Update variable names to match the expected pattern.`
       });
     }
 
