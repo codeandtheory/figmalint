@@ -23,7 +23,7 @@ Each validation category receives a score based on:
 
 ## Getting Started
 
-### Manual Installation (Development)
+### Installation
 
 1. Clone this repository
 2. `npm install`
