@@ -976,6 +976,7 @@ Each text style should be bound to variables that match its size. For example, "
           type: "audit-progress",
           message: `Scanning page ${i + 1}/${totalPages}: "${page.name}"`
         });
+        await new Promise((resolve) => setTimeout(resolve, 0));
         for (const child of page.children) {
           findComponents2(child, page.name);
         }
@@ -992,11 +993,12 @@ Each text style should be bound to variables that match its size. For example, "
       });
       for (let i = 0; i < totalComponents; i++) {
         const component = components[i];
-        if (i % 10 === 0 || i === totalComponents - 1) {
+        if (i % 5 === 0) {
           figma.ui.postMessage({
             type: "audit-progress",
             message: `Scanning ${totalComponents} component${totalComponents !== 1 ? "s" : ""}: ${i + 1}/${totalComponents} validated...`
           });
+          await new Promise((resolve) => setTimeout(resolve, 0));
         }
         const result = validateComponentBindings(component.node);
         results.push(result);
@@ -1010,6 +1012,10 @@ Each text style should be bound to variables that match its size. For example, "
           });
         }
       }
+      figma.ui.postMessage({
+        type: "audit-progress",
+        message: `Completed scanning ${totalComponents} component${totalComponents !== 1 ? "s" : ""}!`
+      });
       const totalValidated = results.length;
       const compliantComponents = results.filter((r) => r.isFullyBound).length;
       if (componentsWithIssues.length > 0) {

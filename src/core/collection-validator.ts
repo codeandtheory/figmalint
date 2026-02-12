@@ -1483,6 +1483,9 @@ export async function validateAllComponentBindings(): Promise<{
         message: `Scanning page ${i + 1}/${totalPages}: "${page.name}"`
       });
 
+      // Yield to UI after each page to prevent freezing
+      await new Promise(resolve => setTimeout(resolve, 0));
+
       for (const child of page.children) {
         findComponents(child, page.name);
       }
@@ -1511,12 +1514,14 @@ export async function validateAllComponentBindings(): Promise<{
     for (let i = 0; i < totalComponents; i++) {
       const component = components[i];
 
-      // Send progress update every 10 components or for the last one
-      if (i % 10 === 0 || i === totalComponents - 1) {
+      // Send progress update and yield to UI every 5 components
+      if (i % 5 === 0) {
         figma.ui.postMessage({
           type: 'audit-progress',
           message: `Scanning ${totalComponents} component${totalComponents !== 1 ? 's' : ''}: ${i + 1}/${totalComponents} validated...`
         });
+        // Allow Figma UI to update by yielding to event loop
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
 
       const result = validateComponentBindings(component.node);
@@ -1532,6 +1537,12 @@ export async function validateAllComponentBindings(): Promise<{
         });
       }
     }
+
+    // Final progress update
+    figma.ui.postMessage({
+      type: 'audit-progress',
+      message: `Completed scanning ${totalComponents} component${totalComponents !== 1 ? 's' : ''}!`
+    });
 
     // Generate audit checks
     const totalValidated = results.length;
