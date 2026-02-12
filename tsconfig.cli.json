@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "node",
+    "lib": ["ES2022"],
+    "outDir": "./dist-cli",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmitOnError": true,
+    "declaration": false,
+    "sourceMap": true,
+    "removeComments": false,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "types": ["node"]
+  },
+  "include": [
+    "src/shared/**/*",
+    "src/core/**/*",
+    "src/cli/**/*",
+    "src/types.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "dist-cli",
+    "*.js",
+    "src/plugin/**/*",
+    "src/ui/**/*",
+    "src/code.ts"
+  ]
+}

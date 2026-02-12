@@ -9,6 +9,193 @@
     }
   }
 
+  // src/plugin/data-adapter.ts
+  function adaptVariableValue(value) {
+    if (value === null || value === void 0) return "";
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      return value;
+    }
+    if (typeof value === "object" && "type" in value && value.type === "VARIABLE_ALIAS") {
+      const alias = value;
+      return { type: "VARIABLE_ALIAS", id: alias.id };
+    }
+    if (typeof value === "object" && "r" in value) {
+      const color = value;
+      return { r: color.r, g: color.g, b: color.b, a: "a" in color ? color.a : 1 };
+    }
+    return String(value);
+  }
+  function adaptVariable(variable) {
+    const valuesByMode = {};
+    for (const [modeId, value] of Object.entries(variable.valuesByMode)) {
+      valuesByMode[modeId] = adaptVariableValue(value);
+    }
+    return {
+      id: variable.id,
+      name: variable.name,
+      variableCollectionId: variable.variableCollectionId,
+      valuesByMode
+    };
+  }
+  function adaptCollection(collection) {
+    return {
+      id: collection.id,
+      name: collection.name
+    };
+  }
+  function adaptTextStyle(style) {
+    const boundVariables = {};
+    const bv = style.boundVariables || {};
+    for (const [key, binding] of Object.entries(bv)) {
+      if (binding && typeof binding === "object" && "id" in binding) {
+        boundVariables[key] = { id: binding.id };
+      }
+    }
+    return {
+      name: style.name,
+      boundVariables
+    };
+  }
+  function adaptColor(color) {
+    return {
+      r: color.r,
+      g: color.g,
+      b: color.b,
+      a: "a" in color ? color.a : 1
+    };
+  }
+  function adaptPaint(paint) {
+    if (paint.type === "SOLID") {
+      const solid = paint;
+      return {
+        type: "SOLID",
+        color: adaptColor(solid.color),
+        visible: solid.visible !== false
+      };
+    }
+    return {
+      type: paint.type,
+      visible: paint.visible !== false
+    };
+  }
+  function adaptEffect(effect) {
+    const result = {
+      type: effect.type,
+      visible: "visible" in effect ? effect.visible !== false : true
+    };
+    if ((effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") && "color" in effect) {
+      result.color = adaptColor(effect.color);
+    }
+    return result;
+  }
+  function adaptLineHeight(lh) {
+    if (typeof lh === "symbol") return "MIXED";
+    if (lh.unit === "AUTO") return { value: 0, unit: "AUTO" };
+    return { value: lh.value, unit: lh.unit === "PERCENT" ? "PERCENT" : "PIXELS" };
+  }
+  function adaptLetterSpacing(ls) {
+    if (typeof ls === "symbol") return "MIXED";
+    return { value: ls.value, unit: ls.unit === "PERCENT" ? "PERCENT" : "PIXELS" };
+  }
+  function adaptBoundVariables(node) {
+    const bv = node.boundVariables || {};
+    const result = {};
+    for (const [key, binding] of Object.entries(bv)) {
+      if (Array.isArray(binding)) {
+        result[key] = binding.map((b) => b && b.id ? { id: b.id } : void 0).filter(Boolean);
+      } else if (binding && typeof binding === "object" && "id" in binding) {
+        result[key] = { id: binding.id };
+      }
+    }
+    return result;
+  }
+  function adaptNode(node) {
+    const result = {
+      id: node.id,
+      name: node.name,
+      type: node.type,
+      boundVariables: adaptBoundVariables(node)
+    };
+    if ("fills" in node && Array.isArray(node.fills)) {
+      result.fills = node.fills.map(adaptPaint);
+    }
+    if ("strokes" in node && Array.isArray(node.strokes)) {
+      result.strokes = node.strokes.map(adaptPaint);
+    }
+    if ("effects" in node && Array.isArray(node.effects)) {
+      result.effects = node.effects.map(adaptEffect);
+    }
+    if ("cornerRadius" in node) {
+      const cr = node.cornerRadius;
+      result.cornerRadius = typeof cr === "number" ? cr : "MIXED";
+    }
+    if ("layoutMode" in node) {
+      result.layoutMode = node.layoutMode || "NONE";
+    }
+    if ("paddingTop" in node) result.paddingTop = node.paddingTop;
+    if ("paddingRight" in node) result.paddingRight = node.paddingRight;
+    if ("paddingBottom" in node) result.paddingBottom = node.paddingBottom;
+    if ("paddingLeft" in node) result.paddingLeft = node.paddingLeft;
+    if ("itemSpacing" in node) result.itemSpacing = node.itemSpacing;
+    if (node.type === "TEXT") {
+      const textNode = node;
+      result.fontSize = typeof textNode.fontSize === "number" ? textNode.fontSize : "MIXED";
+      const lh = textNode.lineHeight;
+      if (lh && typeof lh === "object" && "unit" in lh) {
+        result.lineHeight = adaptLineHeight(lh);
+      }
+      const ls = textNode.letterSpacing;
+      if (ls && typeof ls === "object" && "unit" in ls) {
+        result.letterSpacing = adaptLetterSpacing(ls);
+      }
+    }
+    if ("children" in node) {
+      result.children = node.children.map((child) => adaptNode(child));
+    }
+    return result;
+  }
+  async function fetchVariableData() {
+    const rawCollections = await figma.variables.getLocalVariableCollectionsAsync();
+    const rawVariables = await figma.variables.getLocalVariablesAsync();
+    const rawTextStyles = await figma.getLocalTextStylesAsync();
+    return {
+      collections: rawCollections.map(adaptCollection),
+      variables: rawVariables.map(adaptVariable),
+      textStyles: rawTextStyles.map(adaptTextStyle)
+    };
+  }
+  async function fetchComponents(onProgress) {
+    const components = [];
+    let nodesProcessed = 0;
+    async function walk(node, pageName) {
+      if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+        components.push({ node: adaptNode(node), pageName });
+        return;
+      }
+      if ("children" in node) {
+        for (const child of node.children) {
+          nodesProcessed++;
+          if (nodesProcessed % 50 === 0) {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          }
+          await walk(child, pageName);
+        }
+      }
+    }
+    onProgress == null ? void 0 : onProgress("Loading all pages...");
+    await figma.loadAllPagesAsync();
+    const totalPages = figma.root.children.length;
+    for (let i = 0; i < totalPages; i++) {
+      const page = figma.root.children[i];
+      onProgress == null ? void 0 : onProgress(`Scanning page ${i + 1}/${totalPages}: "${page.name}"`);
+      nodesProcessed = 0;
+      for (const child of page.children) {
+        await walk(child, page.name);
+      }
+    }
+    return components;
+  }
+
   // src/core/collection-validator.ts
   var DEFAULT_COLLECTION_REQUIREMENTS = [
     {
@@ -64,15 +251,13 @@
       ]
     }
   ];
-  async function validateCollectionStructure(requirements = DEFAULT_COLLECTION_REQUIREMENTS) {
+  function validateCollectionStructure(collections, allVariables, requirements = DEFAULT_COLLECTION_REQUIREMENTS) {
     console.log("\u{1F50D} [COLLECTION] Starting collection structure validation...");
     const validatedCollections = [];
     const missingCollections = [];
     const auditChecks = [];
     try {
-      const collections = await figma.variables.getLocalVariableCollectionsAsync();
       console.log(`\u{1F50D} [COLLECTION] Found ${collections.length} local collections:`, collections.map((c) => c.name));
-      const allVariables = await figma.variables.getLocalVariablesAsync();
       console.log(`\u{1F50D} [COLLECTION] Found ${allVariables.length} total variables`);
       const variablesByCollection = /* @__PURE__ */ new Map();
       for (const variable of allVariables) {
@@ -408,11 +593,9 @@ Matched scales are required for consistent typography.`
       subCategoryResults
     };
   }
-  async function validateTextStylesAgainstVariables() {
+  function validateTextStylesAgainstVariables(collections, allVariables, textStyles) {
     const auditChecks = [];
     try {
-      const collections = await figma.variables.getLocalVariableCollectionsAsync();
-      const allVariables = await figma.variables.getLocalVariablesAsync();
       const themeCollection = collections.find((c) => /theme/i.test(c.name));
       const fontFamilyVariables = [];
       if (themeCollection) {
@@ -427,7 +610,6 @@ Matched scales are required for consistent typography.`
           }
         }
       }
-      const textStyles = await figma.getLocalTextStylesAsync();
       const textStyleCategories = [];
       for (const style of textStyles) {
         const parts = style.name.split("/").map((p) => p.toLowerCase().trim());
@@ -546,12 +728,10 @@ Text styles must reference font-family variables dynamically.`
     "letterSpacing",
     "lineHeight"
   ];
-  async function validateTextStyleBindings() {
+  function validateTextStyleBindings(textStyles, allVariables) {
     const auditChecks = [];
     const results = [];
     try {
-      const textStyles = await figma.getLocalTextStylesAsync();
-      const allVariables = await figma.variables.getLocalVariablesAsync();
       const variableIdToName = /* @__PURE__ */ new Map();
       for (const variable of allVariables) {
         variableIdToName.set(variable.id, variable.name.toLowerCase());
@@ -655,23 +835,23 @@ Text styles must reference font-family variables dynamically.`
         const issueDescriptions = unboundIssues.map((s) => {
           const style = results.find((r) => r.styleName === s.styleName);
           if (!style) return `\u2022 "${s.styleName}": ${s.unboundProps.join(", ")}`;
-          const category = style.category;
-          const size = style.size;
+          const cat = style.category;
+          const sz = style.size;
           const propsDetail = s.unboundProps.map((prop) => {
             switch (prop) {
               case "fontFamily":
-                return `  - ${prop} has a hard-coded value. Connect it to "font-family/${category}" variable`;
+                return `  - ${prop} has a hard-coded value. Connect it to "font-family/${cat}" variable`;
               case "fontSize":
-                return `  - ${prop} has a hard-coded value. Connect it to "font-size/${category}/${size}" variable`;
+                return `  - ${prop} has a hard-coded value. Connect it to "font-size/${cat}/${sz}" variable`;
               case "lineHeight":
-                return `  - ${prop} has a hard-coded value. Connect it to "line-height/${category}/${size}" variable`;
+                return `  - ${prop} has a hard-coded value. Connect it to "line-height/${cat}/${sz}" variable`;
               case "letterSpacing":
-                return `  - ${prop} has a hard-coded value. Connect it to "letter-spacing/${category}/${size}" variable`;
+                return `  - ${prop} has a hard-coded value. Connect it to "letter-spacing/${cat}/${sz}" variable`;
               default:
                 return `  - ${prop} has a hard-coded value`;
             }
           });
-          return `\u2022 Text style "${s.styleName}" (category: ${category}, size: ${size}):
+          return `\u2022 Text style "${s.styleName}" (category: ${cat}, size: ${sz}):
 ${propsDetail.join("\n")}`;
         });
         auditChecks.push({
@@ -687,13 +867,13 @@ To fix: Select each text style in Figma, then connect the listed properties to t
       if (bindingIssues.length > 0) {
         const issueDescriptions = bindingIssues.map((s) => {
           const nameParts = s.styleName.split("/");
-          const category = nameParts[0];
-          const size = nameParts.length >= 3 ? nameParts[1] : nameParts[nameParts.length - 1];
+          const cat = nameParts[0];
+          const sz = nameParts.length >= 3 ? nameParts[1] : nameParts[nameParts.length - 1];
           const examples = s.incorrectBindings.map((b) => {
             const propType = b.prop;
-            return `  - ${propType} is bound to "${b.actual}" but should contain "/${size}" to match this text style's size`;
+            return `  - ${propType} is bound to "${b.actual}" but should contain "/${sz}" to match this text style's size`;
           });
-          return `\u2022 Text style "${s.styleName}" (category: ${category}, size: ${size}):
+          return `\u2022 Text style "${s.styleName}" (category: ${cat}, size: ${sz}):
 ${examples.join("\n")}`;
         });
         auditChecks.push({
@@ -732,14 +912,14 @@ Each text style must be bound to variables that match its size. For example, "he
     }
   }
   function isTransparentColor(color) {
-    if ("a" in color && color.a === 0) return true;
+    if (color.a === 0) return true;
     return false;
   }
   function formatColor(color) {
     const r = Math.round(color.r * 255);
     const g = Math.round(color.g * 255);
     const b = Math.round(color.b * 255);
-    if ("a" in color && color.a < 1) {
+    if (color.a < 1) {
       return `rgba(${r}, ${g}, ${b}, ${color.a.toFixed(2)})`;
     }
     return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
@@ -747,40 +927,41 @@ Each text style must be bound to variables that match its size. For example, "he
   function checkNodeForRawValues(node) {
     const rawValues = [];
     const boundVars = node.boundVariables || {};
-    if ("fills" in node && Array.isArray(node.fills)) {
-      const fills = node.fills;
+    if (node.fills && Array.isArray(node.fills)) {
       const fillBindings = boundVars.fills || [];
-      fills.forEach((fill, index) => {
+      node.fills.forEach((fill, index) => {
         if (fill.type === "SOLID" && fill.visible !== false) {
+          const solidFill = fill;
           const hasBinding = fillBindings[index] && fillBindings[index].id;
-          if (!hasBinding && !isTransparentColor(fill.color)) {
+          if (!hasBinding && !isTransparentColor(solidFill.color)) {
             rawValues.push({
               category: "fill",
               property: "fill color",
-              value: formatColor(fill.color)
+              value: formatColor(solidFill.color)
             });
           }
         }
       });
     }
-    if ("strokes" in node && Array.isArray(node.strokes)) {
-      const strokes = node.strokes;
+    if (node.strokes && Array.isArray(node.strokes)) {
       const strokeBindings = boundVars.strokes || [];
-      strokes.forEach((stroke, index) => {
+      node.strokes.forEach((stroke, index) => {
         if (stroke.type === "SOLID" && stroke.visible !== false) {
+          const solidStroke = stroke;
           const hasBinding = strokeBindings[index] && strokeBindings[index].id;
-          if (!hasBinding && !isTransparentColor(stroke.color)) {
+          if (!hasBinding && !isTransparentColor(solidStroke.color)) {
             rawValues.push({
               category: "stroke",
               property: "stroke color",
-              value: formatColor(stroke.color)
+              value: formatColor(solidStroke.color)
             });
           }
         }
       });
     }
-    if ("cornerRadius" in node && typeof node.cornerRadius === "number" && node.cornerRadius > 0) {
-      const hasBinding = boundVars.cornerRadius && boundVars.cornerRadius.id;
+    if (typeof node.cornerRadius === "number" && node.cornerRadius > 0) {
+      const binding = boundVars.cornerRadius;
+      const hasBinding = binding && binding.id;
       if (!hasBinding) {
         rawValues.push({
           category: "cornerRadius",
@@ -789,25 +970,25 @@ Each text style must be bound to variables that match its size. For example, "he
         });
       }
     }
-    if ("layoutMode" in node && node.layoutMode !== "NONE") {
-      if ("paddingTop" in node) {
-        const paddingProps = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"];
-        for (const prop of paddingProps) {
-          const value = node[prop];
-          if (typeof value === "number" && value > 0) {
-            const hasBinding = boundVars[prop] && boundVars[prop].id;
-            if (!hasBinding) {
-              rawValues.push({
-                category: "spacing",
-                property: prop,
-                value: `${value}px`
-              });
-            }
+    if (node.layoutMode && node.layoutMode !== "NONE") {
+      const paddingProps = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"];
+      for (const prop of paddingProps) {
+        const value = node[prop];
+        if (typeof value === "number" && value > 0) {
+          const binding = boundVars[prop];
+          const hasBinding = binding && binding.id;
+          if (!hasBinding) {
+            rawValues.push({
+              category: "spacing",
+              property: prop,
+              value: `${value}px`
+            });
           }
         }
       }
-      if ("itemSpacing" in node && typeof node.itemSpacing === "number" && node.itemSpacing > 0) {
-        const hasBinding = boundVars.itemSpacing && boundVars.itemSpacing.id;
+      if (typeof node.itemSpacing === "number" && node.itemSpacing > 0) {
+        const binding = boundVars.itemSpacing;
+        const hasBinding = binding && binding.id;
         if (!hasBinding) {
           rawValues.push({
             category: "spacing",
@@ -818,24 +999,24 @@ Each text style must be bound to variables that match its size. For example, "he
       }
     }
     if (node.type === "TEXT") {
-      const textNode = node;
       const typographyProps = ["fontSize", "lineHeight", "letterSpacing"];
       for (const prop of typographyProps) {
-        const hasBinding = boundVars[prop] && boundVars[prop].id;
+        const binding = boundVars[prop];
+        const hasBinding = binding && binding.id;
         if (!hasBinding) {
           let value;
           if (prop === "fontSize") {
-            value = typeof textNode.fontSize === "number" ? `${textNode.fontSize}px` : "mixed";
+            value = typeof node.fontSize === "number" ? `${node.fontSize}px` : "mixed";
           } else if (prop === "lineHeight") {
-            const lh = textNode.lineHeight;
-            if (typeof lh === "object" && "value" in lh) {
+            const lh = node.lineHeight;
+            if (lh && typeof lh === "object" && "value" in lh) {
               value = lh.unit === "PERCENT" ? `${lh.value}%` : `${lh.value}px`;
             } else {
               value = "auto";
             }
           } else {
-            const ls = textNode.letterSpacing;
-            if (typeof ls === "object" && "value" in ls) {
+            const ls = node.letterSpacing;
+            if (ls && typeof ls === "object" && "value" in ls) {
               value = ls.unit === "PERCENT" ? `${ls.value}%` : `${ls.value}px`;
             } else {
               value = "0";
@@ -851,17 +1032,15 @@ Each text style must be bound to variables that match its size. For example, "he
         }
       }
     }
-    if ("effects" in node && Array.isArray(node.effects)) {
-      const effects = node.effects;
+    if (node.effects && Array.isArray(node.effects)) {
       const effectBindings = boundVars.effects || [];
-      effects.forEach((effect, index) => {
-        if ("visible" in effect && effect.visible !== false) {
+      node.effects.forEach((effect, index) => {
+        if (effect.visible !== false) {
           const hasBinding = effectBindings[index] && effectBindings[index].id;
           if (!hasBinding) {
             let effectDesc = effect.type.toLowerCase().replace("_", " ");
-            if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
-              const shadow = effect;
-              effectDesc = `${effectDesc} (${formatColor(shadow.color)})`;
+            if ((effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") && effect.color) {
+              effectDesc = `${effectDesc} (${formatColor(effect.color)})`;
             }
             rawValues.push({
               category: "effect",
@@ -881,7 +1060,7 @@ Each text style must be bound to variables that match its size. For example, "he
   }
   function collectAllNodes(node) {
     const nodes = [node];
-    if ("children" in node) {
+    if (node.children) {
       for (const child of node.children) {
         nodes.push(...collectAllNodes(child));
       }
@@ -917,66 +1096,23 @@ Each text style must be bound to variables that match its size. For example, "he
       isFullyBound: nodesWithRawValues.length === 0
     };
   }
-  async function validateAllComponentBindings() {
+  function validateAllComponentBindings(components, onProgress) {
     const auditChecks = [];
     const results = [];
     try {
       console.log("\u{1F9E9} [COMPONENT BINDING] Starting validation...");
-      const components = [];
-      let nodesProcessed = 0;
-      async function findComponents(node, pageName) {
-        if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
-          components.push({ node, pageName });
-        }
-        if ("children" in node) {
-          for (const child of node.children) {
-            nodesProcessed++;
-            if (nodesProcessed % 50 === 0) {
-              await new Promise((resolve) => setTimeout(resolve, 0));
-            }
-            await findComponents(child, pageName);
-          }
-        }
-      }
-      console.log("\u{1F9E9} [COMPONENT BINDING] Loading all pages...");
-      figma.ui.postMessage({
-        type: "audit-progress",
-        data: { message: "Loading all pages..." }
-      });
-      await figma.loadAllPagesAsync();
-      console.log("\u{1F9E9} [COMPONENT BINDING] All pages loaded");
-      const totalPages = figma.root.children.length;
-      console.log("\u{1F9E9} [COMPONENT BINDING] Scanning", totalPages, "pages for components...");
-      for (let i = 0; i < totalPages; i++) {
-        const page = figma.root.children[i];
-        figma.ui.postMessage({
-          type: "audit-progress",
-          data: { message: `Scanning page ${i + 1}/${totalPages}: "${page.name}"` }
-        });
-        nodesProcessed = 0;
-        for (const child of page.children) {
-          await findComponents(child, page.name);
-        }
-      }
-      console.log("\u{1F9E9} [COMPONENT BINDING] Found", components.length, "components across", figma.root.children.length, "pages");
+      console.log("\u{1F9E9} [COMPONENT BINDING] Found", components.length, "components");
       if (components.length === 0) {
         return { results, auditChecks };
       }
       const componentsWithIssues = [];
       const totalComponents = components.length;
-      figma.ui.postMessage({
-        type: "audit-progress",
-        data: { message: `${totalComponents} component${totalComponents !== 1 ? "s are" : " is"} being scanned, please wait patiently...` }
-      });
+      onProgress == null ? void 0 : onProgress(`${totalComponents} component${totalComponents !== 1 ? "s are" : " is"} being scanned, please wait patiently...`);
       for (let i = 0; i < totalComponents; i++) {
         const component = components[i];
         if (i % 10 === 0 || i === totalComponents - 1) {
-          figma.ui.postMessage({
-            type: "audit-progress",
-            data: { message: `Scanning ${totalComponents} component${totalComponents !== 1 ? "s" : ""}: ${i + 1}/${totalComponents} validated...` }
-          });
+          onProgress == null ? void 0 : onProgress(`Scanning ${totalComponents} component${totalComponents !== 1 ? "s" : ""}: ${i + 1}/${totalComponents} validated...`);
         }
-        await new Promise((resolve) => setTimeout(resolve, 0));
         const result = validateComponentBindings(component.node);
         results.push(result);
         if (!result.isFullyBound) {
@@ -989,11 +1125,7 @@ Each text style must be bound to variables that match its size. For example, "he
           });
         }
       }
-      figma.ui.postMessage({
-        type: "audit-progress",
-        data: { message: `Completed scanning ${totalComponents} component${totalComponents !== 1 ? "s" : ""}!` }
-      });
-      const totalValidated = results.length;
+      onProgress == null ? void 0 : onProgress(`Completed scanning ${totalComponents} component${totalComponents !== 1 ? "s" : ""}!`);
       const compliantComponents = results.filter((r) => r.isFullyBound).length;
       for (const component of components) {
         const result = results.find((r) => r.componentName === component.node.name);
@@ -1040,7 +1172,7 @@ To fix: Select this component in Figma, then bind the listed properties to their
         }
       }
       console.log("\u{1F9E9} [COMPONENT BINDING] Validation complete:", {
-        total: totalValidated,
+        total: totalComponents,
         compliant: compliantComponents,
         withIssues: componentsWithIssues.length
       });
@@ -1219,12 +1351,28 @@ To fix: Select this component in Figma, then bind the listed properties to their
   async function handleSystemAudit() {
     try {
       console.log("\u{1F50D} Running CT/DS audit...");
-      const [collectionValidation, textStyleSync, textStyleBindings, componentBindings] = await Promise.all([
-        validateCollectionStructure(),
-        validateTextStylesAgainstVariables(),
-        validateTextStyleBindings(),
-        validateAllComponentBindings()
-      ]);
+      const data = await fetchVariableData();
+      const collectionValidation = validateCollectionStructure(
+        data.collections,
+        data.variables
+      );
+      const textStyleSync = validateTextStylesAgainstVariables(
+        data.collections,
+        data.variables,
+        data.textStyles
+      );
+      const textStyleBindings = validateTextStyleBindings(
+        data.textStyles,
+        data.variables
+      );
+      const progressCallback = (message) => {
+        figma.ui.postMessage({ type: "audit-progress", data: { message } });
+      };
+      const components = await fetchComponents(progressCallback);
+      const componentBindings = validateAllComponentBindings(
+        components,
+        progressCallback
+      );
       const combinedTextStyleSync = [
         ...textStyleSync.auditChecks,
         ...textStyleBindings.auditChecks
@@ -1260,11 +1408,20 @@ To fix: Select this component in Figma, then bind the listed properties to their
   async function handleVariablesStylesAudit() {
     try {
       console.log("\u{1F50D} Running Variables & Styles audit...");
-      const [collectionValidation, textStyleSync, textStyleBindings] = await Promise.all([
-        validateCollectionStructure(),
-        validateTextStylesAgainstVariables(),
-        validateTextStyleBindings()
-      ]);
+      const data = await fetchVariableData();
+      const collectionValidation = validateCollectionStructure(
+        data.collections,
+        data.variables
+      );
+      const textStyleSync = validateTextStylesAgainstVariables(
+        data.collections,
+        data.variables,
+        data.textStyles
+      );
+      const textStyleBindings = validateTextStyleBindings(
+        data.textStyles,
+        data.variables
+      );
       const combinedTextStyleSync = [
         ...textStyleSync.auditChecks,
         ...textStyleBindings.auditChecks
@@ -1296,7 +1453,14 @@ To fix: Select this component in Figma, then bind the listed properties to their
   async function handleComponentsAudit() {
     try {
       console.log("\u{1F50D} Running Components audit...");
-      const componentBindings = await validateAllComponentBindings();
+      const progressCallback = (message) => {
+        figma.ui.postMessage({ type: "audit-progress", data: { message } });
+      };
+      const components = await fetchComponents(progressCallback);
+      const componentBindings = validateAllComponentBindings(
+        components,
+        progressCallback
+      );
       const componentStats = calculateComponentStats(componentBindings.auditChecks);
       sendMessageToUI("components-audit-result", {
         componentBindings: componentBindings.auditChecks,

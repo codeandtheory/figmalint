@@ -1,6 +1,23 @@
-/// <reference types="@figma/plugin-typings" />
+/**
+ * Core validation logic for CT/DS design system auditing.
+ *
+ * All validators accept API-agnostic data types from `../shared/types`
+ * so they work identically whether driven by the Figma Plugin API
+ * or the Figma REST API via the CLI.
+ */
 
 import { AuditCheck } from '../types';
+import type {
+  LintVariable,
+  LintVariableCollection,
+  LintVariableAlias,
+  LintTextStyle,
+  LintNode,
+  LintComponent,
+  LintRGBA,
+  LintSolidPaint,
+  LintBoundVariable,
+} from '../shared/types';
 
 // ============================================================================
 // Types
@@ -174,14 +191,18 @@ export const DEFAULT_COLLECTION_REQUIREMENTS: CollectionRequirement[] = [
 // ============================================================================
 
 /**
- * Validate all variable collections against the required structure
- * 
+ * Validate all variable collections against the required structure.
+ *
+ * @param collections - Variable collections from the adapter
+ * @param allVariables - All variables from the adapter
  * @param requirements - Collection requirements to validate against (defaults to DEFAULT_COLLECTION_REQUIREMENTS)
  * @returns Validation results with audit checks
  */
-export async function validateCollectionStructure(
+export function validateCollectionStructure(
+  collections: LintVariableCollection[],
+  allVariables: LintVariable[],
   requirements: CollectionRequirement[] = DEFAULT_COLLECTION_REQUIREMENTS
-): Promise<CollectionStructureValidation> {
+): CollectionStructureValidation {
   console.log('🔍 [COLLECTION] Starting collection structure validation...');
   
   const validatedCollections: CollectionValidationResult[] = [];
@@ -189,16 +210,11 @@ export async function validateCollectionStructure(
   const auditChecks: AuditCheck[] = [];
   
   try {
-    // Get all local variable collections
-    const collections = await figma.variables.getLocalVariableCollectionsAsync();
     console.log(`🔍 [COLLECTION] Found ${collections.length} local collections:`, collections.map(c => c.name));
-    
-    // Get all local variables for category analysis
-    const allVariables = await figma.variables.getLocalVariablesAsync();
     console.log(`🔍 [COLLECTION] Found ${allVariables.length} total variables`);
     
     // Group variables by collection ID
-    const variablesByCollection = new Map<string, Variable[]>();
+    const variablesByCollection = new Map<string, LintVariable[]>();
     for (const variable of allVariables) {
       const existing = variablesByCollection.get(variable.variableCollectionId) || [];
       existing.push(variable);
@@ -225,8 +241,8 @@ export async function validateCollectionStructure(
         for (const modeId of Object.keys(valuesByMode)) {
           const value = valuesByMode[modeId];
           // Check if value is an alias (references another variable)
-          if (value && typeof value === 'object' && 'type' in value && value.type === 'VARIABLE_ALIAS') {
-            const aliasId = (value as VariableAlias).id;
+          if (value && typeof value === 'object' && 'type' in value && (value as LintVariableAlias).type === 'VARIABLE_ALIAS') {
+            const aliasId = (value as LintVariableAlias).id;
             if (primitivesVariableIds.has(aliasId)) {
               aliasCount++;
             }
@@ -260,8 +276,6 @@ export async function validateCollectionStructure(
         
         // Collection doesn't exist - suggest creating it (info, not failure)
         console.log(`ℹ️ [COLLECTION] No "${requirement.displayName}" collection found - suggesting creation`);
-        // const categoryList = requirement.requiredCategories.map(c => c.name).join(', ');
-
         const examples = requirement.requiredCategories.map(cat => {
           switch (cat.name) {
             case 'color':
@@ -357,8 +371,7 @@ export async function validateCollectionStructure(
                 suggestion: `"${matchingCollection.name}" ${subResult.category} category has no sub-categories following the expected naming pattern.\n\nExpected pattern: ${patternDescription}\n\nAdd variables like:\n${exampleVars}\n\nConsistent naming is required for a predictable design system.`
               });
             } else {
-              // Has valid sub-categories - pass! (ignore category names like "display", "heading")
-              // The "invalidNames" might just be intermediate category names in a 3-level structure
+              // Has valid sub-categories - pass!
               const foundList = subResult.found.slice(0, 5).join(', ') + (subResult.found.length > 5 ? `... (${subResult.found.length} total)` : '');
 
               auditChecks.push({
@@ -414,7 +427,6 @@ export async function validateCollectionStructure(
           suggestion: `All detected collections (${validatedCollections.map(v => v.matchedRequirement).join(', ')}) have proper structure`
         });
       }
-      // Individual collection checks are already added above
     }
     
     console.log('✅ [COLLECTION] Validation complete:', {
@@ -451,7 +463,7 @@ export async function validateCollectionStructure(
  * @param variables - Variables to analyze
  * @returns Map of top-level category to set of sub-categories
  */
-function extractCategories(variables: Variable[]): Map<string, Set<string>> {
+function extractCategories(variables: LintVariable[]): Map<string, Set<string>> {
   const categories = new Map<string, Set<string>>();
   
   for (const variable of variables) {
@@ -603,53 +615,6 @@ function validateCategories(
   };
 }
 
-/**
- * Quick check if any variable collections exist
- */
-export async function hasVariableCollections(): Promise<boolean> {
-  try {
-    const collections = await figma.variables.getLocalVariableCollectionsAsync();
-    return collections.length > 0;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Get a summary of all variable collections for display
- */
-export async function getCollectionSummary(): Promise<Array<{
-  name: string;
-  variableCount: number;
-  categories: string[];
-}>> {
-  try {
-    const collections = await figma.variables.getLocalVariableCollectionsAsync();
-    const allVariables = await figma.variables.getLocalVariablesAsync();
-    
-    const variablesByCollection = new Map<string, Variable[]>();
-    for (const variable of allVariables) {
-      const existing = variablesByCollection.get(variable.variableCollectionId) || [];
-      existing.push(variable);
-      variablesByCollection.set(variable.variableCollectionId, existing);
-    }
-    
-    return collections.map(collection => {
-      const variables = variablesByCollection.get(collection.id) || [];
-      const categories = extractCategories(variables);
-      
-      return {
-        name: collection.name,
-        variableCount: variables.length,
-        categories: Array.from(categories.keys())
-      };
-    });
-  } catch (error) {
-    console.error('Error getting collection summary:', error);
-    return [];
-  }
-}
-
 // ============================================================================
 // Text Style & Font-Family Variable Validation
 // ============================================================================
@@ -672,26 +637,23 @@ export interface TextStyleValidationResult {
 
 /**
  * Validate that font-family variables and text styles are in sync.
- * 
- * Rules:
- * - If font-family variables exist (e.g., font-family/display, font-family/heading),
- *   there should be matching text styles with those names as top-level categories
- * - If text styles exist with categories like "display/...", "heading/...",
- *   there should be matching font-family variables
- * 
+ *
+ * @param collections - Variable collections
+ * @param allVariables - All variables
+ * @param textStyles - All text styles
  * @returns Validation result with audit checks
  */
-export async function validateTextStylesAgainstVariables(): Promise<{
+export function validateTextStylesAgainstVariables(
+  collections: LintVariableCollection[],
+  allVariables: LintVariable[],
+  textStyles: LintTextStyle[]
+): {
   validation: TextStyleValidationResult;
   auditChecks: AuditCheck[];
-}> {
+} {
   const auditChecks: AuditCheck[] = [];
   
   try {
-    // Get all variables and find font-family sub-categories from Theme collection
-    const collections = await figma.variables.getLocalVariableCollectionsAsync();
-    const allVariables = await figma.variables.getLocalVariablesAsync();
-    
     // Find the Theme collection
     const themeCollection = collections.find(c => /theme/i.test(c.name));
     
@@ -711,7 +673,6 @@ export async function validateTextStylesAgainstVariables(): Promise<{
     }
     
     // Get text styles and extract their top-level categories
-    const textStyles = await figma.getLocalTextStylesAsync();
     const textStyleCategories: string[] = [];
     
     for (const style of textStyles) {
@@ -735,7 +696,7 @@ export async function validateTextStylesAgainstVariables(): Promise<{
     );
     
     // Compare: which text style categories don't have matching variables?
-    // Only check categories that match common typography patterns (display, heading, body, label, etc.)
+    // Only check categories that match common typography patterns
     const typographyPatterns = ['display', 'heading', 'body', 'label', 'caption', 'title', 'subtitle', 'overline'];
     const relevantTextCategories = textStyleCategories.filter(
       cat => typographyPatterns.some(pattern => cat.includes(pattern))
@@ -851,19 +812,6 @@ const TYPOGRAPHY_PROPERTIES = [
 type TypographyProperty = typeof TYPOGRAPHY_PROPERTIES[number];
 
 /**
- * Maps Figma text style bound variable keys to our property names
- */
-// Mapping of Figma's bound variable keys to typography properties
-// Note: fontWeight is not currently supported in Figma's variable binding API
-// const FIGMA_BOUND_VAR_KEYS: Record<string, TypographyProperty> = {
-//   'fontFamily': 'fontFamily',
-//   'fontSize': 'fontSize',
-//   'fontWeight': 'fontWeight',
-//   'letterSpacing': 'letterSpacing',
-//   'lineHeight': 'lineHeight'
-// };
-
-/**
  * Result of validating a single text style's variable bindings
  */
 export interface TextStyleBindingResult {
@@ -891,28 +839,22 @@ export interface TextStyleBindingResult {
 /**
  * Validate that text styles use theme variables for typography properties
  * and that variable names match the text style structure.
- * 
- * Expected patterns:
- * - Text style: "{category}/{size}" (e.g., "display/xl", "heading/lg")
- * - font-family: "font-family/{category}" (e.g., "font-family/display")
- * - font-size: "font-size/{size}" (e.g., "font-size/xl")
- * - font-weight: "font-weight/{any}" (flexible)
- * - letter-spacing: "letter-spacing/{size}" (e.g., "letter-spacing/xl")
- * - line-height: "line-height/{size}" (e.g., "line-height/xl")
- * 
+ *
+ * @param textStyles - All text styles from the adapter
+ * @param allVariables - All variables from the adapter
  * @returns Validation results with audit checks
  */
-export async function validateTextStyleBindings(): Promise<{
+export function validateTextStyleBindings(
+  textStyles: LintTextStyle[],
+  allVariables: LintVariable[]
+): {
   results: TextStyleBindingResult[];
   auditChecks: AuditCheck[];
-}> {
+} {
   const auditChecks: AuditCheck[] = [];
   const results: TextStyleBindingResult[] = [];
   
   try {
-    const textStyles = await figma.getLocalTextStylesAsync();
-    const allVariables = await figma.variables.getLocalVariablesAsync();
-    
     // Create a map of variable IDs to names for quick lookup
     const variableIdToName = new Map<string, string>();
     for (const variable of allVariables) {
@@ -950,7 +892,7 @@ export async function validateTextStyleBindings(): Promise<{
       const unboundProperties: TypographyProperty[] = [];
       
       // Check each typography property
-      const boundVars = (style as any).boundVariables || {};
+      const boundVars = style.boundVariables || {};
 
       // Debug: log what boundVariables actually contains for first few styles
       if (results.length < 3) {
@@ -958,7 +900,7 @@ export async function validateTextStyleBindings(): Promise<{
       }
 
       for (const prop of TYPOGRAPHY_PROPERTIES) {
-        const binding = boundVars[prop];
+        const binding = boundVars[prop] as LintBoundVariable | undefined;
         
         if (binding && binding.id) {
           // Property is bound to a variable
@@ -1056,7 +998,6 @@ export async function validateTextStyleBindings(): Promise<{
     const fullyCompliantStyles = results.filter(r => r.isFullyBound && r.hasCorrectBindings).length;
     
     if (totalStyles === 0) {
-      // No text styles following the pattern
       return { results, auditChecks };
     }
     
@@ -1070,25 +1011,25 @@ export async function validateTextStyleBindings(): Promise<{
         const style = results.find(r => r.styleName === s.styleName);
         if (!style) return `• "${s.styleName}": ${s.unboundProps.join(', ')}`;
 
-        const category = style.category;
-        const size = style.size;
+        const cat = style.category;
+        const sz = style.size;
 
         const propsDetail = s.unboundProps.map(prop => {
           switch (prop) {
             case 'fontFamily':
-              return `  - ${prop} has a hard-coded value. Connect it to "font-family/${category}" variable`;
+              return `  - ${prop} has a hard-coded value. Connect it to "font-family/${cat}" variable`;
             case 'fontSize':
-              return `  - ${prop} has a hard-coded value. Connect it to "font-size/${category}/${size}" variable`;
+              return `  - ${prop} has a hard-coded value. Connect it to "font-size/${cat}/${sz}" variable`;
             case 'lineHeight':
-              return `  - ${prop} has a hard-coded value. Connect it to "line-height/${category}/${size}" variable`;
+              return `  - ${prop} has a hard-coded value. Connect it to "line-height/${cat}/${sz}" variable`;
             case 'letterSpacing':
-              return `  - ${prop} has a hard-coded value. Connect it to "letter-spacing/${category}/${size}" variable`;
+              return `  - ${prop} has a hard-coded value. Connect it to "letter-spacing/${cat}/${sz}" variable`;
             default:
               return `  - ${prop} has a hard-coded value`;
           }
         });
 
-        return `• Text style "${s.styleName}" (category: ${category}, size: ${size}):\n${propsDetail.join('\n')}`;
+        return `• Text style "${s.styleName}" (category: ${cat}, size: ${sz}):\n${propsDetail.join('\n')}`;
       });
 
       auditChecks.push({
@@ -1102,15 +1043,15 @@ export async function validateTextStyleBindings(): Promise<{
       // Report ALL incorrect bindings with detailed explanations
       const issueDescriptions = bindingIssues.map(s => {
         const nameParts = s.styleName.split('/');
-        const category = nameParts[0];
-        const size = nameParts.length >= 3 ? nameParts[1] : nameParts[nameParts.length - 1];
+        const cat = nameParts[0];
+        const sz = nameParts.length >= 3 ? nameParts[1] : nameParts[nameParts.length - 1];
 
         const examples = s.incorrectBindings.map(b => {
           const propType = b.prop;
-          return `  - ${propType} is bound to "${b.actual}" but should contain "/${size}" to match this text style's size`;
+          return `  - ${propType} is bound to "${b.actual}" but should contain "/${sz}" to match this text style's size`;
         });
 
-        return `• Text style "${s.styleName}" (category: ${category}, size: ${size}):\n${examples.join('\n')}`;
+        return `• Text style "${s.styleName}" (category: ${cat}, size: ${sz}):\n${examples.join('\n')}`;
       });
 
       auditChecks.push({
@@ -1194,19 +1135,19 @@ export interface ComponentBindingValidationResult {
 /**
  * Check if a color is effectively transparent/invisible
  */
-function isTransparentColor(color: RGB | RGBA): boolean {
-  if ('a' in color && color.a === 0) return true;
+function isTransparentColor(color: LintRGBA): boolean {
+  if (color.a === 0) return true;
   return false;
 }
 
 /**
  * Format a color value for display
  */
-function formatColor(color: RGB | RGBA): string {
+function formatColor(color: LintRGBA): string {
   const r = Math.round(color.r * 255);
   const g = Math.round(color.g * 255);
   const b = Math.round(color.b * 255);
-  if ('a' in color && color.a < 1) {
+  if (color.a < 1) {
     return `rgba(${r}, ${g}, ${b}, ${color.a.toFixed(2)})`;
   }
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
@@ -1215,23 +1156,23 @@ function formatColor(color: RGB | RGBA): string {
 /**
  * Check a node for raw values that should be using variables
  */
-function checkNodeForRawValues(node: SceneNode): NodeRawValueResult {
+function checkNodeForRawValues(node: LintNode): NodeRawValueResult {
   const rawValues: NodeRawValueResult['rawValues'] = [];
-  const boundVars = (node as any).boundVariables || {};
+  const boundVars = node.boundVariables || {};
   
   // Check fills (colors)
-  if ('fills' in node && Array.isArray(node.fills)) {
-    const fills = node.fills as readonly Paint[];
-    const fillBindings = boundVars.fills || [];
+  if (node.fills && Array.isArray(node.fills)) {
+    const fillBindings = (boundVars.fills as LintBoundVariable[] | undefined) || [];
     
-    fills.forEach((fill, index) => {
+    node.fills.forEach((fill, index) => {
       if (fill.type === 'SOLID' && fill.visible !== false) {
+        const solidFill = fill as LintSolidPaint;
         const hasBinding = fillBindings[index] && fillBindings[index].id;
-        if (!hasBinding && !isTransparentColor(fill.color)) {
+        if (!hasBinding && !isTransparentColor(solidFill.color)) {
           rawValues.push({
             category: 'fill',
             property: 'fill color',
-            value: formatColor(fill.color)
+            value: formatColor(solidFill.color)
           });
         }
       }
@@ -1239,18 +1180,18 @@ function checkNodeForRawValues(node: SceneNode): NodeRawValueResult {
   }
   
   // Check strokes (border colors)
-  if ('strokes' in node && Array.isArray(node.strokes)) {
-    const strokes = node.strokes as readonly Paint[];
-    const strokeBindings = boundVars.strokes || [];
+  if (node.strokes && Array.isArray(node.strokes)) {
+    const strokeBindings = (boundVars.strokes as LintBoundVariable[] | undefined) || [];
     
-    strokes.forEach((stroke, index) => {
+    node.strokes.forEach((stroke, index) => {
       if (stroke.type === 'SOLID' && stroke.visible !== false) {
+        const solidStroke = stroke as LintSolidPaint;
         const hasBinding = strokeBindings[index] && strokeBindings[index].id;
-        if (!hasBinding && !isTransparentColor(stroke.color)) {
+        if (!hasBinding && !isTransparentColor(solidStroke.color)) {
           rawValues.push({
             category: 'stroke',
             property: 'stroke color',
-            value: formatColor(stroke.color)
+            value: formatColor(solidStroke.color)
           });
         }
       }
@@ -1258,8 +1199,9 @@ function checkNodeForRawValues(node: SceneNode): NodeRawValueResult {
   }
   
   // Check corner radius
-  if ('cornerRadius' in node && typeof node.cornerRadius === 'number' && node.cornerRadius > 0) {
-    const hasBinding = boundVars.cornerRadius && boundVars.cornerRadius.id;
+  if (typeof node.cornerRadius === 'number' && node.cornerRadius > 0) {
+    const binding = boundVars.cornerRadius as LintBoundVariable | undefined;
+    const hasBinding = binding && binding.id;
     if (!hasBinding) {
       rawValues.push({
         category: 'cornerRadius',
@@ -1270,28 +1212,28 @@ function checkNodeForRawValues(node: SceneNode): NodeRawValueResult {
   }
   
   // Check auto-layout spacing properties
-  if ('layoutMode' in node && node.layoutMode !== 'NONE') {
+  if (node.layoutMode && node.layoutMode !== 'NONE') {
     // Padding
-    if ('paddingTop' in node) {
-      const paddingProps = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'] as const;
-      for (const prop of paddingProps) {
-        const value = (node as any)[prop];
-        if (typeof value === 'number' && value > 0) {
-          const hasBinding = boundVars[prop] && boundVars[prop].id;
-          if (!hasBinding) {
-            rawValues.push({
-              category: 'spacing',
-              property: prop,
-              value: `${value}px`
-            });
-          }
+    const paddingProps = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'] as const;
+    for (const prop of paddingProps) {
+      const value = node[prop];
+      if (typeof value === 'number' && value > 0) {
+        const binding = boundVars[prop] as LintBoundVariable | undefined;
+        const hasBinding = binding && binding.id;
+        if (!hasBinding) {
+          rawValues.push({
+            category: 'spacing',
+            property: prop,
+            value: `${value}px`
+          });
         }
       }
     }
     
     // Gap (itemSpacing)
-    if ('itemSpacing' in node && typeof node.itemSpacing === 'number' && node.itemSpacing > 0) {
-      const hasBinding = boundVars.itemSpacing && boundVars.itemSpacing.id;
+    if (typeof node.itemSpacing === 'number' && node.itemSpacing > 0) {
+      const binding = boundVars.itemSpacing as LintBoundVariable | undefined;
+      const hasBinding = binding && binding.id;
       if (!hasBinding) {
         rawValues.push({
           category: 'spacing',
@@ -1304,25 +1246,25 @@ function checkNodeForRawValues(node: SceneNode): NodeRawValueResult {
   
   // Check typography (for text nodes)
   if (node.type === 'TEXT') {
-    const textNode = node as TextNode;
     const typographyProps = ['fontSize', 'lineHeight', 'letterSpacing'] as const;
     
     for (const prop of typographyProps) {
-      const hasBinding = boundVars[prop] && boundVars[prop].id;
+      const binding = boundVars[prop] as LintBoundVariable | undefined;
+      const hasBinding = binding && binding.id;
       if (!hasBinding) {
         let value: string;
         if (prop === 'fontSize') {
-          value = typeof textNode.fontSize === 'number' ? `${textNode.fontSize}px` : 'mixed';
+          value = typeof node.fontSize === 'number' ? `${node.fontSize}px` : 'mixed';
         } else if (prop === 'lineHeight') {
-          const lh = textNode.lineHeight;
-          if (typeof lh === 'object' && 'value' in lh) {
+          const lh = node.lineHeight;
+          if (lh && typeof lh === 'object' && 'value' in lh) {
             value = lh.unit === 'PERCENT' ? `${lh.value}%` : `${lh.value}px`;
           } else {
             value = 'auto';
           }
         } else {
-          const ls = textNode.letterSpacing;
-          if (typeof ls === 'object' && 'value' in ls) {
+          const ls = node.letterSpacing;
+          if (ls && typeof ls === 'object' && 'value' in ls) {
             value = ls.unit === 'PERCENT' ? `${ls.value}%` : `${ls.value}px`;
           } else {
             value = '0';
@@ -1342,18 +1284,16 @@ function checkNodeForRawValues(node: SceneNode): NodeRawValueResult {
   }
   
   // Check effects (shadows, blurs)
-  if ('effects' in node && Array.isArray(node.effects)) {
-    const effects = node.effects as readonly Effect[];
-    const effectBindings = boundVars.effects || [];
+  if (node.effects && Array.isArray(node.effects)) {
+    const effectBindings = (boundVars.effects as LintBoundVariable[] | undefined) || [];
     
-    effects.forEach((effect, index) => {
-      if ('visible' in effect && effect.visible !== false) {
+    node.effects.forEach((effect, index) => {
+      if (effect.visible !== false) {
         const hasBinding = effectBindings[index] && effectBindings[index].id;
         if (!hasBinding) {
           let effectDesc = effect.type.toLowerCase().replace('_', ' ');
-          if (effect.type === 'DROP_SHADOW' || effect.type === 'INNER_SHADOW') {
-            const shadow = effect as DropShadowEffect;
-            effectDesc = `${effectDesc} (${formatColor(shadow.color)})`;
+          if ((effect.type === 'DROP_SHADOW' || effect.type === 'INNER_SHADOW') && effect.color) {
+            effectDesc = `${effectDesc} (${formatColor(effect.color)})`;
           }
           rawValues.push({
             category: 'effect',
@@ -1376,10 +1316,10 @@ function checkNodeForRawValues(node: SceneNode): NodeRawValueResult {
 /**
  * Recursively collect all nodes in a component
  */
-function collectAllNodes(node: SceneNode): SceneNode[] {
-  const nodes: SceneNode[] = [node];
+function collectAllNodes(node: LintNode): LintNode[] {
+  const nodes: LintNode[] = [node];
   
-  if ('children' in node) {
+  if (node.children) {
     for (const child of node.children) {
       nodes.push(...collectAllNodes(child));
     }
@@ -1390,19 +1330,11 @@ function collectAllNodes(node: SceneNode): SceneNode[] {
 
 /**
  * Validate that a component uses theme variables for all visual properties.
- * 
- * Checks for raw values in:
- * - Fill colors
- * - Stroke colors
- * - Corner radius
- * - Auto-layout spacing (padding, gap)
- * - Typography (font size, line height, letter spacing)
- * - Effects (shadows, blurs)
- * 
+ *
  * @param componentNode - The component or component set to validate
  * @returns Validation result with raw value locations
  */
-export function validateComponentBindings(componentNode: ComponentNode | ComponentSetNode): ComponentBindingValidationResult {
+export function validateComponentBindings(componentNode: LintNode): ComponentBindingValidationResult {
   const allNodes = collectAllNodes(componentNode);
   const nodesWithRawValues: NodeRawValueResult[] = [];
   const rawValueCounts: Record<ComponentPropertyCategory, number> = {
@@ -1435,77 +1367,25 @@ export function validateComponentBindings(componentNode: ComponentNode | Compone
 }
 
 /**
- * Validate all local components for variable bindings
- * 
+ * Validate all components for variable bindings.
+ *
+ * @param components - Components discovered by the adapter, annotated with page name
+ * @param onProgress - Optional callback for progress updates
  * @returns Audit checks for component variable usage
  */
-export async function validateAllComponentBindings(): Promise<{
+export function validateAllComponentBindings(
+  components: LintComponent[],
+  onProgress?: (message: string) => void
+): {
   results: ComponentBindingValidationResult[];
   auditChecks: AuditCheck[];
-}> {
+} {
   const auditChecks: AuditCheck[] = [];
   const results: ComponentBindingValidationResult[] = [];
   
   try {
     console.log('🧩 [COMPONENT BINDING] Starting validation...');
-
-    // Find all components and component sets across ALL pages
-    const components: Array<{
-      node: ComponentNode | ComponentSetNode;
-      pageName: string;
-    }> = [];
-
-    let nodesProcessed = 0;
-
-    // Async recursive function with periodic yields
-    async function findComponents(node: SceneNode, pageName: string): Promise<void> {
-      if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
-        components.push({ node, pageName });
-      }
-
-      if ('children' in node) {
-        for (const child of node.children) {
-          nodesProcessed++;
-
-          // Yield every 50 nodes to keep UI responsive on large pages
-          if (nodesProcessed % 50 === 0) {
-            await new Promise(resolve => setTimeout(resolve, 0));
-          }
-
-          await findComponents(child, pageName);
-        }
-      }
-    }
-
-    // Load all pages first (required to access their children)
-    console.log('🧩 [COMPONENT BINDING] Loading all pages...');
-    figma.ui.postMessage({
-      type: 'audit-progress',
-      data: { message: 'Loading all pages...' }
-    });
-    await figma.loadAllPagesAsync();
-    console.log('🧩 [COMPONENT BINDING] All pages loaded');
-
-    // Scan all pages in the document
-    const totalPages = figma.root.children.length;
-    console.log('🧩 [COMPONENT BINDING] Scanning', totalPages, 'pages for components...');
-
-    for (let i = 0; i < totalPages; i++) {
-      const page = figma.root.children[i];
-      figma.ui.postMessage({
-        type: 'audit-progress',
-        data: { message: `Scanning page ${i + 1}/${totalPages}: "${page.name}"` }
-      });
-
-      // Reset counter for each page
-      nodesProcessed = 0;
-
-      for (const child of page.children) {
-        await findComponents(child, page.name);
-      }
-    }
-
-    console.log('🧩 [COMPONENT BINDING] Found', components.length, 'components across', figma.root.children.length, 'pages');
+    console.log('🧩 [COMPONENT BINDING] Found', components.length, 'components');
 
     if (components.length === 0) {
       return { results, auditChecks };
@@ -1520,24 +1400,15 @@ export async function validateAllComponentBindings(): Promise<{
     }> = [];
 
     const totalComponents = components.length;
-    figma.ui.postMessage({
-      type: 'audit-progress',
-      data: { message: `${totalComponents} component${totalComponents !== 1 ? 's are' : ' is'} being scanned, please wait patiently...` }
-    });
+    onProgress?.(`${totalComponents} component${totalComponents !== 1 ? 's are' : ' is'} being scanned, please wait patiently...`);
 
     for (let i = 0; i < totalComponents; i++) {
       const component = components[i];
 
-      // Update progress message every 10 components to avoid too many UI updates
+      // Update progress message every 10 components
       if (i % 10 === 0 || i === totalComponents - 1) {
-        figma.ui.postMessage({
-          type: 'audit-progress',
-          data: { message: `Scanning ${totalComponents} component${totalComponents !== 1 ? 's' : ''}: ${i + 1}/${totalComponents} validated...` }
-        });
+        onProgress?.(`Scanning ${totalComponents} component${totalComponents !== 1 ? 's' : ''}: ${i + 1}/${totalComponents} validated...`);
       }
-
-      // Yield to event loop after EVERY component to keep UI responsive
-      await new Promise(resolve => setTimeout(resolve, 0));
 
       const result = validateComponentBindings(component.node);
       results.push(result);
@@ -1554,13 +1425,9 @@ export async function validateAllComponentBindings(): Promise<{
     }
 
     // Final progress update
-    figma.ui.postMessage({
-      type: 'audit-progress',
-      data: { message: `Completed scanning ${totalComponents} component${totalComponents !== 1 ? 's' : ''}!` }
-    });
+    onProgress?.(`Completed scanning ${totalComponents} component${totalComponents !== 1 ? 's' : ''}!`);
 
     // Generate audit checks - one per component (pass/fail only)
-    const totalValidated = results.length;
     const compliantComponents = results.filter(r => r.isFullyBound).length;
     
     // Create one audit check per component with page information
@@ -1612,7 +1479,7 @@ export async function validateAllComponentBindings(): Promise<{
     }
 
     console.log('🧩 [COMPONENT BINDING] Validation complete:', {
-      total: totalValidated,
+      total: totalComponents,
       compliant: compliantComponents,
       withIssues: componentsWithIssues.length
     });

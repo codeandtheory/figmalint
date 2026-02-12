@@ -29,6 +29,10 @@ pids
 # Optional eslint cache
 .eslintcache
 
+# Build output
+dist/
+dist-cli/
+
 # Figma plugin specific
 # Keep the compiled .js files as they're needed for the plugin to work
 # *.js  # Don't ignore .js files for Figma plugins

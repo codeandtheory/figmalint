@@ -1,17 +1,25 @@
 {
   "name": "ctdslint",
-  "version": "3.0.0",
-  "description": "ctdsLint - CT/DS (Code & Theory Design System) audit tool for Figma. Validates variable collections, text styles, and component variable bindings for design system compliance.",
+  "version": "3.1.0",
+  "description": "ctdsLint - CT/DS (Code & Theory Design System) audit tool for Figma. Validates variable collections, text styles, and component variable bindings for design system compliance. Available as a Figma plugin and CLI.",
   "main": "dist/code.js",
+  "bin": {
+    "ctdslint": "dist-cli/cli/index.js"
+  },
   "scripts": {
-    "build": "npm run bundle && npm run copy-assets",
-    "bundle": "esbuild src/code.ts --bundle --outfile=dist/code.js --platform=neutral --target=es2017 --format=iife --global-name='' --loader:.ts=ts",
-    "dev": "npm run bundle -- --watch",
+    "build": "npm run build:plugin && npm run build:cli",
+    "build:plugin": "npm run clean:plugin && npm run bundle:plugin && npm run copy-assets",
+    "build:cli": "npm run clean:cli && npm run bundle:cli",
+    "bundle:plugin": "esbuild src/code.ts --bundle --outfile=dist/code.js --platform=neutral --target=es2017 --format=iife --global-name='' --loader:.ts=ts",
+    "bundle:cli": "esbuild src/cli/index.ts --bundle --outfile=dist-cli/cli/index.js --platform=node --target=node18 --format=cjs --loader:.ts=ts",
+    "dev": "npm run bundle:plugin -- --watch",
+    "dev:cli": "npm run bundle:cli -- --watch",
     "copy-assets": "cp ui-enhanced.html dist/ && cp manifest.json dist/",
-    "clean": "rm -rf dist",
+    "clean": "rm -rf dist dist-cli",
+    "clean:plugin": "rm -rf dist",
+    "clean:cli": "rm -rf dist-cli",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "lint": "tsc --noEmit",
-    "prebuild": "npm run clean"
+    "lint": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.cli.json"
   },
   "keywords": [
     "figma",
@@ -22,16 +30,19 @@
     "audit",
     "variables",
     "validation",
-    "tokens"
+    "tokens",
+    "cli"
   ],
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "@figma/plugin-typings": "^1.123.0",
+    "@types/node": "^20.11.0",
     "esbuild": "^0.27.3",
     "typescript": "^5.9.3"
   },
   "files": [
-    "dist/**/*"
+    "dist/**/*",
+    "dist-cli/**/*"
   ]
 }

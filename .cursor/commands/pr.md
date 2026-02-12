@@ -38,6 +38,11 @@ The `/pr` command MUST output PR summaries using this EXACT template structure:
 - ❌ NEVER include HTML comment placeholders in output
 - ❌ NEVER deviate from this template structure under any circumstances
 
+## Shell Permissions
+
+**MANDATORY**: Every Shell tool call made during execution of this command **MUST** use `required_permissions: ["all"]`. The sandbox environment breaks TLS certificate verification for GitHub CLI and other network operations. Do NOT use `required_permissions: ["full_network"]` — always use `["all"]` to disable the sandbox entirely.
+
+
 ## Instructions
 
 When the user types `/pr`, `/pr [target-branch]`, `/pr [jira-tickets]`, `/pr [target-branch] [jira-tickets]`, `/pr --create`, or `/pr --analysis`:
@@ -169,6 +174,7 @@ git commit -m "feat: Add additional feature"
   - **Documentation**: Suggest reviewing rendered output, link validation
 - Include specific commands or steps when applicable
 - Mention any automated testing that should pass
+  - Use GitHub checkbox format (`- [ ]`) instead of `-` to enable interactive checkboxes in GitHub PRs
 
 #### Risks Section:
 
@@ -380,20 +386,17 @@ Jira:\s*([A-Z]{2,10}-\d+(?:,\s*[A-Z]{2,10}-\d+)*) # Jira: PROJ-123, PROJ-456
 When `--create` flag is used, the command will:
 
 1. **Check Prerequisites:**
-
    - Verify GitHub CLI (`gh`) is installed: `which gh`
    - Verify user is authenticated: `gh auth status`
    - Verify current branch is pushed to remote: `git rev-parse --abbrev-ref HEAD@{upstream}`
 
 2. **Determine Smart Commit Range:**
-
    - Check for existing merged PRs from current branch: `gh pr list --head [current-branch] --state merged --limit 1`
    - If found, get merge commit hash: `gh pr view [pr-number] --json mergeCommit`
    - Use range `[merge-commit-hash]..HEAD` for analysis
    - If no previous PRs, use `[target-branch]...HEAD`
 
 3. **Generate PR Title:**
-
    - Use the first commit message subject from the smart range as the PR title
    - Or generate a title from the overall change summary
    - Format: `feat(scope): Add new feature` or `Fix critical bug in authentication`
@@ -410,7 +413,6 @@ When `--create` flag is used, the command will:
    ```
 
 5. **Handle Errors:**
-
    - If `gh` not installed: Provide installation instructions
    - If not authenticated: Run `gh auth login`
    - If branch not pushed: Run `git push -u origin [current-branch]`

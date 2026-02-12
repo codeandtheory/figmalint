@@ -27,6 +27,8 @@
   "exclude": [
     "node_modules",
     "dist",
-    "*.js"
+    "dist-cli",
+    "*.js",
+    "src/cli/**/*"
   ]
 }
