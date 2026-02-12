@@ -1,85 +1,47 @@
-# FigmaLint
+# ctdsLint
 
-An AI-powered Figma plugin that audits components for design system compliance, accessibility, and developer readiness — then helps you fix what it finds.
-
-FigmaLint analyzes your components against real standards, surfaces hard-coded values and naming issues, and produces structured documentation ready for developer handoff or AI code generation.
-
-**[Install from Figma Community](https://www.figma.com/community/plugin/1521241390290871981/figmalint)**
+A Figma plugin that audits your design system for CTDS (Comprehensive Design Token System) compliance. Validates variable collections, text styles, and component variable bindings to ensure your design system follows best practices.
 
 ## Features
 
-### Multi-Provider AI Analysis
+### CTDS Audit
 
-Choose your preferred AI provider and model:
+Run a comprehensive system-level audit that validates:
 
-- **Anthropic** — Claude Opus 4.5, Sonnet 4.5, Haiku 4.5
-- **OpenAI** — GPT-5.2, GPT-5.2 Pro, GPT-5 Mini
-- **Google** — Gemini 3 Pro, Gemini 2.5 Pro, Gemini 2.5 Flash
+- **Collection Structure** — Ensures variable collections follow expected patterns and contain required categories (e.g., Primitives, Brand, Theme collections with proper color, typography, spacing categories)
+- **Text Style Sync** — Validates that font-family variables and text styles are synchronized (e.g., if you have `font-family/display` variables, you should have matching `display/...` text styles)
+- **Text Style Bindings** — Checks that text styles use font-family variables instead of hard-coded font families
+- **Component Bindings** — Validates that components use design tokens (variables) instead of hard-coded values for fills, strokes, spacing, typography, effects, and corner radius
 
-Switch providers and models at any time. API keys are stored per provider and auto-detected from key format.
+### Audit Scoring
 
-### Component Analysis
+Each validation category receives a score based on:
 
-- Detects missing interactive states (hover, focus, disabled, pressed, active)
-- Evaluates accessibility against WCAG standards — contrast ratio, touch target size, focus indicators, font size
-- Checks component readiness — property configuration, descriptions, structure
-- Identifies component variants and maps their relationships
-- Lists nested component instances used within the design
+- Pass/fail/warning status for individual checks
+- Overall percentage of passing checks
+- Detailed breakdown by category (collection structure, text styles, component bindings)
 
 ### Design Token Detection
 
-- Detects Figma Variables, Named Styles, and hard-coded values
-- Categorizes tokens by type: colors, spacing, typography, effects, borders
-- Distinguishes actual design tokens from hard-coded values with per-node deduplication
-- Provides AI-driven suggestions for mapping hard-coded values to tokens
-- Filters wrapper/boundary elements from scoring to reduce false positives
+The plugin can analyze components to detect:
 
-### Auto-Fix
+- Figma Variables in use
+- Named Styles (fill, text, effect styles)
+- Hard-coded values that should be replaced with tokens
+- Token categorization (colors, spacing, typography, effects, borders)
 
-Apply fixes directly from the analysis results:
+### Auto-Fix Capabilities
 
-- **Token binding** — Bind hard-coded colors and spacing values to design system variables. Fuzzy matching finds the closest token with property-aware scoring (stroke weight matches stroke tokens, padding matches spacing tokens, etc.)
-- **Layer renaming** — Detects generic Figma names (Frame 1, Rectangle 4) and suggests semantic alternatives. Six naming strategies: Semantic, BEM, prefix-based, kebab-case, camelCase, snake_case. Recognizes 30+ semantic layer types.
-- **Add component properties** — Stage recommended Boolean, Text, Instance Swap, or Variant properties from AI suggestions.
-- **Batch operations** — Fix All buttons to resolve all token or naming issues at once.
+Fix modules are available for:
 
-### AI-Powered Descriptions
-
-Generates structured component descriptions with:
-
-- Brief summary of the component and its variants
-- PURPOSE, BEHAVIOR, COMPOSITION, USAGE, and CODE GENERATION NOTES sections
-- Nested component inventory so AI tools know what sub-components already exist
-- Comparison UI showing whether the Figma description matches the AI-generated one
-- Side-by-side review modal for approving description updates
-
-### Component Audit Scoring
-
-Each component receives a readiness score based on:
-
-- Design token adoption (weighted 2x)
-- Interactive state coverage (weighted 3x)
-- Accessibility checks (contrast, touch targets, focus, font size)
-- Component readiness checks (descriptions, property configuration)
-- Score-aware AI Interpretation that adapts messaging to actual results
-
-### Design Systems Chat
-
-A conversational interface for asking questions about your selected component. Supports multi-turn conversation with context about the component's properties, tokens, states, and structure.
-
-### Developer Handoff
-
-Three export formats:
-
-- **Markdown** — Comprehensive documentation with variants table, properties API, property quick reference, states with pass/fail status, slots, design token breakdown (tokens in use vs hard-coded), accessibility info and audit results, component readiness, naming issues, and AI interpretation. Ready for ZeroHeight, Knapsack, or Supernova.
-- **AI Prompt** — A structured specification you can paste into any AI tool to generate production-ready component code. Includes the full component spec, design tokens, accessibility requirements, and implementation notes.
-- **JSON** — Complete analysis data including metadata, token analysis, audit results, naming issues, and properties for programmatic use.
+- **Token binding** — Bind hard-coded colors and spacing values to design system variables
+- **Layer renaming** — Detect generic Figma names and suggest semantic alternatives with multiple naming strategies
 
 ## Getting Started
 
 ### From Figma Community
 
-1. Visit [FigmaLint on Figma Community](https://www.figma.com/community/plugin/1521241390290871981/figmalint)
+1. Visit [ctdsLint on Figma Community](https://www.figma.com/community/plugin/1521241390290871981/figmalint)
 2. Click "Install"
 
 ### Manual Installation (Development)
@@ -90,12 +52,13 @@ Three export formats:
 4. In Figma: Plugins > Development > Import plugin from manifest
 5. Select the `manifest.json` from the project root
 
-### Setup
+### Usage
 
-1. Select a provider (Anthropic, OpenAI, or Google)
-2. Choose a model
-3. Enter your API key
-4. Select a component and click Analyze
+1. Open your Figma file with variable collections and components
+2. Run the plugin: Plugins > ctdsLint
+3. Click "Run CTDS Audit" to validate your design system
+4. Review the audit results organized by category
+5. Address any failures or warnings identified
 
 ## Architecture
 
@@ -103,18 +66,11 @@ Three export formats:
 src/
 ├── code.ts                      # Plugin entry point
 ├── types.ts                     # TypeScript definitions
-├── api/
-│   ├── claude.ts                # Prompt construction and AI integration
-│   └── providers/
-│       ├── types.ts             # Provider type system
-│       ├── index.ts             # Provider registry and routing
-│       ├── anthropic.ts         # Anthropic (Claude) provider
-│       ├── openai.ts            # OpenAI (GPT) provider
-│       └── google.ts            # Google (Gemini) provider
 ├── core/
-│   ├── component-analyzer.ts    # Component analysis and prompt building
+│   ├── collection-validator.ts  # Collection structure, text style, and component binding validation
 │   ├── token-analyzer.ts        # Design token detection and categorization
-│   └── consistency-engine.ts    # Design system consistency checks
+│   └── types/
+│       └── consistency.ts       # Consistency check types
 ├── fixes/
 │   ├── token-fixer.ts           # Token binding (color + spacing variables)
 │   └── naming-fixer.ts          # Layer renaming with semantic detection
@@ -131,7 +87,7 @@ ui-enhanced.html                 # Plugin interface (single-file HTML/CSS/JS)
 ### Prerequisites
 
 - Node.js 16+
-- An API key from [Anthropic](https://console.anthropic.com), [OpenAI](https://platform.openai.com), or [Google AI Studio](https://aistudio.google.com)
+- Figma Desktop app (for plugin development)
 
 ### Commands
 
@@ -143,13 +99,28 @@ npm run lint         # Type checking
 npm run clean        # Clean build artifacts
 ```
 
+## Collection Structure Requirements
+
+By default, ctdsLint validates against these collection patterns:
+
+- **Primitives** — Should contain `color` category
+- **Brand** — Should contain `color` and `typography` categories (with font-family, font-weight, font-size, letter-spacing, line-height sub-categories)
+- **Theme** — Should contain:
+  - `colors` category (with bg, text, border sub-categories)
+  - `font-family` category (with display, heading, body, label sub-categories)
+  - `font-weight` category
+  - `font-size` category (with t-shirt size naming: xs, sm, md, lg, xl, etc.)
+  - `line-height` category (mirrors font-size)
+  - `letter-spacing` category (mirrors font-size)
+  - `spacing` category
+
+You can customize these requirements in `src/core/collection-validator.ts`.
+
 ## Privacy & Security
 
-- API keys stored in Figma's local storage per provider
-- Component data is never stored externally
-- Analysis calls go directly to the selected provider's API
-- Auto-fix operations modify only the properties you approve
-- Open source
+- No external API calls — all validation runs locally in Figma
+- No data storage — analysis happens in real-time
+- Open source — inspect the code yourself
 
 ## Contributing
 
