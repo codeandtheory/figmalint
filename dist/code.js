@@ -3445,8 +3445,8 @@ ${scoringCriteria}
   var lastSystemAuditResults = null;
   var consistencyEngine = new consistency_engine_default({
     enableCaching: true,
-    enableMCPIntegration: true,
-    mcpServerUrl: "https://design-systems-mcp.southleft-llc.workers.dev/mcp"
+    enableMCPIntegration: false,
+    mcpServerUrl: ""
   });
   async function handleUIMessage(msg) {
     const { type, data } = msg;
@@ -3752,64 +3752,8 @@ ${scoringCriteria}
     }
   }
   async function queryDesignSystemsMCP(query) {
-    var _a;
-    try {
-      console.log("\u{1F50D} Querying MCP for chat:", query);
-      const mcpServerUrl = ((_a = consistencyEngine["config"]) == null ? void 0 : _a.mcpServerUrl) || "https://design-systems-mcp.southleft-llc.workers.dev/mcp";
-      const searchPromises = [
-        // General design knowledge search
-        searchMCPKnowledge(mcpServerUrl, query, { category: "general", limit: 3 }),
-        // Component-specific search if the query mentions components
-        query.toLowerCase().includes("component") ? searchMCPKnowledge(mcpServerUrl, query, { category: "components", limit: 2 }) : Promise.resolve({ results: [] }),
-        // Token-specific search if the query mentions tokens/design tokens
-        query.toLowerCase().includes("token") || query.toLowerCase().includes("design token") ? searchMCPKnowledge(mcpServerUrl, query, { category: "tokens", limit: 2 }) : Promise.resolve({ results: [] })
-      ];
-      const results = await Promise.allSettled(searchPromises);
-      const allSources = [];
-      results.forEach((result) => {
-        if (result.status === "fulfilled" && result.value.results) {
-          allSources.push(...result.value.results);
-        }
-      });
-      console.log(`\u2705 Found ${allSources.length} relevant sources for chat query`);
-      return { sources: allSources.slice(0, 5) };
-    } catch (error) {
-      console.warn("\u26A0\uFE0F MCP query failed for chat:", error);
-      return { sources: [] };
-    }
-  }
-  async function searchMCPKnowledge(serverUrl, query, options = {}) {
-    const searchPayload = {
-      jsonrpc: "2.0",
-      id: Math.floor(Math.random() * 1e3) + 100,
-      method: "tools/call",
-      params: {
-        name: "search_design_knowledge",
-        arguments: __spreadValues({
-          query,
-          limit: options.limit || 5
-        }, options.category && { category: options.category })
-      }
-    };
-    const response = await fetch(serverUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(searchPayload)
-    });
-    if (!response.ok) {
-      throw new Error(`MCP search failed: ${response.status}`);
-    }
-    const result = await response.json();
-    if (result.result && result.result.content) {
-      return {
-        results: result.result.content.map((item) => ({
-          title: item.title || "Design System Knowledge",
-          content: item.content || item.description || "",
-          category: item.category || "general"
-        }))
-      };
-    }
-    return { results: [] };
+    console.log("\u26A0\uFE0F MCP queries disabled - AI features removed");
+    return { sources: [] };
   }
   function getCurrentComponentContext() {
     try {

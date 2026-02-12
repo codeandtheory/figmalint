@@ -74,11 +74,11 @@ let lastSystemAuditResults: {
   timestamp: number;
 } | null = null;
 
-// Initialize consistency engine
+// Initialize consistency engine (MCP disabled - AI features removed)
 const consistencyEngine = new ComponentConsistencyEngine({
   enableCaching: true,
-  enableMCPIntegration: true,
-  mcpServerUrl: 'https://design-systems-mcp.southleft-llc.workers.dev/mcp'
+  enableMCPIntegration: false,
+  mcpServerUrl: ''
 });
 
 /**
@@ -453,9 +453,9 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
     // Extract component context
     const componentContext = await extractComponentContext(selectedNode);
 
-    // Set up enhanced analysis options with MCP enabled by default
+    // Set up enhanced analysis options (MCP disabled - AI features removed)
     const enhancedOptions: EnhancedAnalysisOptions = {
-      enableMCPEnhancement: true, // Enable MCP enhancement by default
+      enableMCPEnhancement: false, // MCP disabled - AI features removed
       batchMode: options.batchMode || false,
       enableAudit: options.enableAudit !== false, // Enable by default
       includeTokenAnalysis: options.includeTokenAnalysis !== false, // Enable by default
@@ -758,86 +758,19 @@ function findNodeInPage(page: PageNode, nodeId: string): boolean {
 
 /**
  * Query the design systems MCP server for relevant knowledge
+ * DISABLED - AI features removed from plugin
  */
 async function queryDesignSystemsMCP(query: string): Promise<{ sources: any[] }> {
-  try {
-    console.log('🔍 Querying MCP for chat:', query);
-
-    const mcpServerUrl = consistencyEngine['config']?.mcpServerUrl || 'https://design-systems-mcp.southleft-llc.workers.dev/mcp';
-
-    // Use multiple search strategies for better results
-    const searchPromises = [
-      // General design knowledge search
-      searchMCPKnowledge(mcpServerUrl, query, { category: 'general', limit: 3 }),
-      // Component-specific search if the query mentions components
-      query.toLowerCase().includes('component') ?
-        searchMCPKnowledge(mcpServerUrl, query, { category: 'components', limit: 2 }) :
-        Promise.resolve({ results: [] }),
-      // Token-specific search if the query mentions tokens/design tokens
-      (query.toLowerCase().includes('token') || query.toLowerCase().includes('design token')) ?
-        searchMCPKnowledge(mcpServerUrl, query, { category: 'tokens', limit: 2 }) :
-        Promise.resolve({ results: [] })
-    ];
-
-    const results = await Promise.allSettled(searchPromises);
-
-    // Combine all successful results
-    const allSources: any[] = [];
-    results.forEach(result => {
-      if (result.status === 'fulfilled' && result.value.results) {
-        allSources.push(...result.value.results);
-      }
-    });
-
-    console.log(`✅ Found ${allSources.length} relevant sources for chat query`);
-
-    return { sources: allSources.slice(0, 5) }; // Limit to top 5 results
-  } catch (error) {
-    console.warn('⚠️ MCP query failed for chat:', error);
-    return { sources: [] };
-  }
+  console.log('⚠️ MCP queries disabled - AI features removed');
+  return { sources: [] };
 }
 
 /**
  * Search MCP knowledge base
+ * DISABLED - AI features removed from plugin
  */
 async function searchMCPKnowledge(serverUrl: string, query: string, options: { category?: string; limit?: number } = {}): Promise<{ results: any[] }> {
-  const searchPayload = {
-    jsonrpc: "2.0",
-    id: Math.floor(Math.random() * 1000) + 100,
-    method: "tools/call",
-    params: {
-      name: "search_design_knowledge",
-      arguments: {
-        query,
-        limit: options.limit || 5,
-        ...(options.category && { category: options.category })
-      }
-    }
-  };
-
-  const response = await fetch(serverUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(searchPayload)
-  });
-
-  if (!response.ok) {
-    throw new Error(`MCP search failed: ${response.status}`);
-  }
-
-  const result = await response.json();
-
-  if (result.result && result.result.content) {
-    return {
-      results: result.result.content.map((item: any) => ({
-        title: item.title || 'Design System Knowledge',
-        content: item.content || item.description || '',
-        category: item.category || 'general'
-      }))
-    };
-  }
-
+  console.log('⚠️ MCP search disabled - AI features removed');
   return { results: [] };
 }
 
