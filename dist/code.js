@@ -135,12 +135,12 @@
           }).join("\n");
           auditChecks.push({
             check: `${requirement.displayName} collection`,
-            status: "warning",
-            suggestion: `No "${requirement.displayName}" collection found. Consider creating one with these categories:
+            status: "fail",
+            suggestion: `No "${requirement.displayName}" collection found. Create one with these categories:
 
 ${examples}
 
-This collection helps organize your ${categoryList} tokens for better design system structure.`
+This collection is required for a complete design system structure.`
           });
           continue;
         }
@@ -191,13 +191,13 @@ These categories are essential for a complete ${requirement.displayName} collect
               const exampleVars = subResult.missing.slice(0, 3).map((m) => `  - ${subResult.category}/${m}`).join("\n");
               auditChecks.push({
                 check: `${requirement.displayName} ${subResult.category} sub-categories`,
-                status: "warning",
+                status: "fail",
                 suggestion: `"${matchingCollection.name}" ${subResult.category} category is missing sub-categories: ${missingList}.
 
 Add these variables to complete your ${subResult.category} scale:
 ${exampleVars}
 
-Consistent sub-categories across all categories make your design system more predictable.`
+Consistent sub-categories across all categories are required for a complete design system.`
               });
             }
             if (subResult.patternValidation) {
@@ -206,7 +206,7 @@ Consistent sub-categories across all categories make your design system more pre
                 const exampleVars = examples.slice(0, 3).map((ex) => `  - ${ex}`).join("\n");
                 auditChecks.push({
                   check: `${requirement.displayName} ${subResult.category} naming`,
-                  status: "warning",
+                  status: "fail",
                   suggestion: `"${matchingCollection.name}" ${subResult.category} category has no sub-categories following the expected naming pattern.
 
 Expected pattern: ${patternDescription}
@@ -214,7 +214,7 @@ Expected pattern: ${patternDescription}
 Add variables like:
 ${exampleVars}
 
-Consistent naming makes variables easier to find and use.`
+Consistent naming is required for a predictable design system.`
                 });
               } else {
                 const foundList = subResult.found.slice(0, 5).join(", ") + (subResult.found.length > 5 ? `... (${subResult.found.length} total)` : "");
@@ -232,27 +232,27 @@ Consistent naming makes variables easier to find and use.`
                 const exampleVars = missingSizes.slice(0, 3).map((sz) => `  - ${subResult.category}/${sz}`).join("\n");
                 auditChecks.push({
                   check: `${requirement.displayName} ${subResult.category} sizes`,
-                  status: "warning",
+                  status: "fail",
                   suggestion: `"${matchingCollection.name}" ${subResult.category} is missing sizes that exist in ${sourceCategory}: ${missingList}.
 
 Add these variables to mirror your ${sourceCategory} scale:
 ${exampleVars}
 
-Keeping ${subResult.category} and ${sourceCategory} synchronized ensures typography remains consistent.`
+Keeping ${subResult.category} and ${sourceCategory} synchronized is required for consistent typography.`
                 });
               }
               if (extraSizes.length > 0) {
                 const extraList = extraSizes.slice(0, 5).join(", ") + (extraSizes.length > 5 ? `, and ${extraSizes.length - 5} more` : "");
                 auditChecks.push({
                   check: `${requirement.displayName} ${subResult.category} extra sizes`,
-                  status: "warning",
+                  status: "fail",
                   suggestion: `"${matchingCollection.name}" ${subResult.category} has sizes that don't exist in ${sourceCategory}: ${extraList}.
 
-Consider either:
+Fix by either:
   - Adding these sizes to ${sourceCategory} (if they're needed)
   - Removing them from ${subResult.category} (if they're unused)
 
-Mismatched scales can lead to inconsistent typography.`
+Matched scales are required for consistent typography.`
                 });
               }
               if (isFullMatch && subResult.found.length > 0) {
@@ -295,7 +295,7 @@ Mismatched scales can lead to inconsistent typography.`
         missingCollections: requirements.map((r) => r.displayName),
         auditChecks: [{
           check: "Variable collection structure",
-          status: "warning",
+          status: "fail",
           suggestion: `Could not validate variable collections: ${error instanceof Error ? error.message : "Unknown error"}`
         }]
       };
@@ -491,13 +491,13 @@ Text styles make typography consistent and easier to apply across your designs.`
           const exampleStyles = variablesMissingStyles.slice(0, 3).map((v) => `  - ${v}/xl, ${v}/lg, ${v}/md`).join("\n");
           auditChecks.push({
             check: "Text styles for font-family variables",
-            status: "warning",
+            status: "fail",
             suggestion: `These font-family variables don't have matching text styles: ${varList}.
 
 Create text styles using these patterns:
 ${exampleStyles}
 
-This ensures all font-family variables are used in your text style system.`
+All font-family variables must have matching text styles.`
           });
         }
         if (stylesMissingVariables.length > 0) {
@@ -505,13 +505,13 @@ This ensures all font-family variables are used in your text style system.`
           const exampleVars = stylesMissingVariables.slice(0, 3).map((s) => `  - font-family/${s}`).join("\n");
           auditChecks.push({
             check: "Font-family variables for text styles",
-            status: "warning",
+            status: "fail",
             suggestion: `These text style categories don't have matching font-family variables: ${styleList}.
 
 Add these variables to your Theme collection:
 ${exampleVars}
 
-This allows your text styles to reference font families dynamically.`
+Text styles must reference font-family variables dynamically.`
           });
         }
         if (isFullMatch && fontFamilyVariables.length > 0) {
@@ -535,7 +535,7 @@ This allows your text styles to reference font families dynamically.`
         },
         auditChecks: [{
           check: "Text style validation",
-          status: "warning",
+          status: "fail",
           suggestion: `Could not validate text styles: ${error instanceof Error ? error.message : "Unknown error"}`
         }]
       };
@@ -677,7 +677,7 @@ ${propsDetail.join("\n")}`;
         });
         auditChecks.push({
           check: "Text style variable bindings",
-          status: "warning",
+          status: "fail",
           suggestion: `${unboundIssues.length} text style(s) have hard-coded values instead of using theme variables:
 
 ${issueDescriptions.join("\n\n")}
@@ -699,12 +699,12 @@ ${examples.join("\n")}`;
         });
         auditChecks.push({
           check: "Text style variable naming",
-          status: "warning",
+          status: "fail",
           suggestion: `${bindingIssues.length} text style(s) are connected to variables with mismatched size values:
 
 ${issueDescriptions.join("\n\n")}
 
-Each text style should be bound to variables that match its size. For example, "heading/sm/light" should use "letter-spacing/heading/sm", not "letter-spacing/heading/md".`
+Each text style must be bound to variables that match its size. For example, "heading/sm/light" should use "letter-spacing/heading/sm", not "letter-spacing/heading/md".`
         });
       }
       if (unboundIssues.length === 0 && bindingIssues.length === 0 && totalStyles > 0) {
@@ -726,7 +726,7 @@ Each text style should be bound to variables that match its size. For example, "
         results,
         auditChecks: [{
           check: "Text style variable bindings",
-          status: "warning",
+          status: "fail",
           suggestion: `Could not validate text style bindings: ${error instanceof Error ? error.message : "Unknown error"}`
         }]
       };
@@ -1184,11 +1184,10 @@ To fix: Select this component in Figma, then bind the listed properties to their
       return { score: 100, passed: 0, warnings: 0, failed: 0, total: 0 };
     }
     const passed = checks.filter((c) => c.status === "pass").length;
-    const warnings = checks.filter((c) => c.status === "warning").length;
     const failed = checks.filter((c) => c.status === "fail").length;
     const total = checks.length;
     const score = Math.round(passed / total * 100);
-    return { score, passed, warnings, failed, total };
+    return { score, passed, warnings: 0, failed, total };
   }
   function calculateComponentStats(checks) {
     if (checks.length === 0) {

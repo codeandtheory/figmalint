@@ -172,7 +172,7 @@ async function handleComponentsAudit(): Promise<void> {
 }
 
 /**
- * Calculate audit statistics from checks
+ * Calculate audit statistics from checks (pass/fail only)
  */
 function calculateAuditStats(checks: any[]): { score: number; passed: number; warnings: number; failed: number; total: number } {
   if (checks.length === 0) {
@@ -180,12 +180,12 @@ function calculateAuditStats(checks: any[]): { score: number; passed: number; wa
   }
 
   const passed = checks.filter(c => c.status === 'pass').length;
-  const warnings = checks.filter(c => c.status === 'warning').length;
   const failed = checks.filter(c => c.status === 'fail').length;
   const total = checks.length;
   const score = Math.round((passed / total) * 100);
 
-  return { score, passed, warnings, failed, total };
+  // Keep warnings in response for backward compatibility, but should always be 0
+  return { score, passed, warnings: 0, failed, total };
 }
 
 /**

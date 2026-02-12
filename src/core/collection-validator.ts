@@ -277,8 +277,8 @@ export async function validateCollectionStructure(
 
         auditChecks.push({
           check: `${requirement.displayName} collection`,
-          status: 'warning',
-          suggestion: `No "${requirement.displayName}" collection found. Consider creating one with these categories:\n\n${examples}\n\nThis collection helps organize your ${categoryList} tokens for better design system structure.`
+          status: 'fail',
+          suggestion: `No "${requirement.displayName}" collection found. Create one with these categories:\n\n${examples}\n\nThis collection is required for a complete design system structure.`
         });
         continue;
       }
@@ -339,8 +339,8 @@ export async function validateCollectionStructure(
 
             auditChecks.push({
               check: `${requirement.displayName} ${subResult.category} sub-categories`,
-              status: 'warning',
-              suggestion: `"${matchingCollection.name}" ${subResult.category} category is missing sub-categories: ${missingList}.\n\nAdd these variables to complete your ${subResult.category} scale:\n${exampleVars}\n\nConsistent sub-categories across all categories make your design system more predictable.`
+              status: 'fail',
+              suggestion: `"${matchingCollection.name}" ${subResult.category} category is missing sub-categories: ${missingList}.\n\nAdd these variables to complete your ${subResult.category} scale:\n${exampleVars}\n\nConsistent sub-categories across all categories are required for a complete design system.`
             });
           }
           
@@ -353,8 +353,8 @@ export async function validateCollectionStructure(
 
               auditChecks.push({
                 check: `${requirement.displayName} ${subResult.category} naming`,
-                status: 'warning',
-                suggestion: `"${matchingCollection.name}" ${subResult.category} category has no sub-categories following the expected naming pattern.\n\nExpected pattern: ${patternDescription}\n\nAdd variables like:\n${exampleVars}\n\nConsistent naming makes variables easier to find and use.`
+                status: 'fail',
+                suggestion: `"${matchingCollection.name}" ${subResult.category} category has no sub-categories following the expected naming pattern.\n\nExpected pattern: ${patternDescription}\n\nAdd variables like:\n${exampleVars}\n\nConsistent naming is required for a predictable design system.`
               });
             } else {
               // Has valid sub-categories - pass! (ignore category names like "display", "heading")
@@ -378,8 +378,8 @@ export async function validateCollectionStructure(
 
               auditChecks.push({
                 check: `${requirement.displayName} ${subResult.category} sizes`,
-                status: 'warning',
-                suggestion: `"${matchingCollection.name}" ${subResult.category} is missing sizes that exist in ${sourceCategory}: ${missingList}.\n\nAdd these variables to mirror your ${sourceCategory} scale:\n${exampleVars}\n\nKeeping ${subResult.category} and ${sourceCategory} synchronized ensures typography remains consistent.`
+                status: 'fail',
+                suggestion: `"${matchingCollection.name}" ${subResult.category} is missing sizes that exist in ${sourceCategory}: ${missingList}.\n\nAdd these variables to mirror your ${sourceCategory} scale:\n${exampleVars}\n\nKeeping ${subResult.category} and ${sourceCategory} synchronized is required for consistent typography.`
               });
             }
             if (extraSizes.length > 0) {
@@ -387,8 +387,8 @@ export async function validateCollectionStructure(
 
               auditChecks.push({
                 check: `${requirement.displayName} ${subResult.category} extra sizes`,
-                status: 'warning',
-                suggestion: `"${matchingCollection.name}" ${subResult.category} has sizes that don't exist in ${sourceCategory}: ${extraList}.\n\nConsider either:\n  - Adding these sizes to ${sourceCategory} (if they're needed)\n  - Removing them from ${subResult.category} (if they're unused)\n\nMismatched scales can lead to inconsistent typography.`
+                status: 'fail',
+                suggestion: `"${matchingCollection.name}" ${subResult.category} has sizes that don't exist in ${sourceCategory}: ${extraList}.\n\nFix by either:\n  - Adding these sizes to ${sourceCategory} (if they're needed)\n  - Removing them from ${subResult.category} (if they're unused)\n\nMatched scales are required for consistent typography.`
               });
             }
             if (isFullMatch && subResult.found.length > 0) {
@@ -438,7 +438,7 @@ export async function validateCollectionStructure(
       missingCollections: requirements.map(r => r.displayName),
       auditChecks: [{
         check: 'Variable collection structure',
-        status: 'warning',
+        status: 'fail',
         suggestion: `Could not validate variable collections: ${error instanceof Error ? error.message : 'Unknown error'}`
       }]
     };
@@ -787,8 +787,8 @@ export async function validateTextStylesAgainstVariables(): Promise<{
 
         auditChecks.push({
           check: 'Text styles for font-family variables',
-          status: 'warning',
-          suggestion: `These font-family variables don't have matching text styles: ${varList}.\n\nCreate text styles using these patterns:\n${exampleStyles}\n\nThis ensures all font-family variables are used in your text style system.`
+          status: 'fail',
+          suggestion: `These font-family variables don't have matching text styles: ${varList}.\n\nCreate text styles using these patterns:\n${exampleStyles}\n\nAll font-family variables must have matching text styles.`
         });
       }
 
@@ -798,8 +798,8 @@ export async function validateTextStylesAgainstVariables(): Promise<{
 
         auditChecks.push({
           check: 'Font-family variables for text styles',
-          status: 'warning',
-          suggestion: `These text style categories don't have matching font-family variables: ${styleList}.\n\nAdd these variables to your Theme collection:\n${exampleVars}\n\nThis allows your text styles to reference font families dynamically.`
+          status: 'fail',
+          suggestion: `These text style categories don't have matching font-family variables: ${styleList}.\n\nAdd these variables to your Theme collection:\n${exampleVars}\n\nText styles must reference font-family variables dynamically.`
         });
       }
 
@@ -827,7 +827,7 @@ export async function validateTextStylesAgainstVariables(): Promise<{
       },
       auditChecks: [{
         check: 'Text style validation',
-        status: 'warning',
+        status: 'fail',
         suggestion: `Could not validate text styles: ${error instanceof Error ? error.message : 'Unknown error'}`
       }]
     };
@@ -1093,7 +1093,7 @@ export async function validateTextStyleBindings(): Promise<{
 
       auditChecks.push({
         check: 'Text style variable bindings',
-        status: 'warning',
+        status: 'fail',
         suggestion: `${unboundIssues.length} text style(s) have hard-coded values instead of using theme variables:\n\n${issueDescriptions.join('\n\n')}\n\nTo fix: Select each text style in Figma, then connect the listed properties to their corresponding variables using the variable binding feature.`
       });
     }
@@ -1115,8 +1115,8 @@ export async function validateTextStyleBindings(): Promise<{
 
       auditChecks.push({
         check: 'Text style variable naming',
-        status: 'warning',
-        suggestion: `${bindingIssues.length} text style(s) are connected to variables with mismatched size values:\n\n${issueDescriptions.join('\n\n')}\n\nEach text style should be bound to variables that match its size. For example, "heading/sm/light" should use "letter-spacing/heading/sm", not "letter-spacing/heading/md".`
+        status: 'fail',
+        suggestion: `${bindingIssues.length} text style(s) are connected to variables with mismatched size values:\n\n${issueDescriptions.join('\n\n')}\n\nEach text style must be bound to variables that match its size. For example, "heading/sm/light" should use "letter-spacing/heading/sm", not "letter-spacing/heading/md".`
       });
     }
 
@@ -1143,7 +1143,7 @@ export async function validateTextStyleBindings(): Promise<{
       results,
       auditChecks: [{
         check: 'Text style variable bindings',
-        status: 'warning',
+        status: 'fail',
         suggestion: `Could not validate text style bindings: ${error instanceof Error ? error.message : 'Unknown error'}`
       }]
     };

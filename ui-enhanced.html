@@ -3630,10 +3630,10 @@
       // Score Display
       if (data.scores && data.scores.overall) {
         const score = data.scores.overall.score;
-        const { passed, warnings, failed, total } = data.scores.overall;
+        const { passed, failed, total } = data.scores.overall;
         
         // Determine score color
-        let scoreColor = '#22c55e'; // green
+        let scoreColor = '#16a34a'; // green (darker for better contrast)
         let scoreLabel = 'Excellent';
         if (score < 50) {
           scoreColor = '#ef4444'; // red
@@ -3642,13 +3642,9 @@
           scoreColor = '#f59e0b'; // amber
           scoreLabel = 'Fair';
         } else if (score < 90) {
-          scoreColor = '#22c55e'; // green
+          scoreColor = '#16a34a'; // green (darker for better contrast)
           scoreLabel = 'Good';
         }
-        
-        // Calculate stroke offset for circular progress
-        const circumference = 2 * Math.PI * 45; // radius = 45
-        const strokeOffset = circumference - (score / 100) * circumference;
         
         html += `
           <div class="score-card" style="
@@ -3688,20 +3684,13 @@
             <div style="flex: 1; min-width: 0;">
               <div style="font-size: 16px; font-weight: 600; margin-bottom: 12px; color: ${scoreColor};">${scoreLabel}</div>
 
-              <!-- Stats Grid -->
-              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 8px;">
+              <!-- Stats Grid (Pass/Fail only) -->
+              <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 8px;">
                 <div style="display: flex; align-items: center; gap: 6px;">
-                  <span style="color: #22c55e; font-size: 16px;">${ICO.checkCircle}</span>
+                  <span style="color: #16a34a; font-size: 16px;">${ICO.checkCircle}</span>
                   <div style="display: flex; flex-direction: column; line-height: 1.2;">
                     <span style="font-size: 16px; font-weight: 600; color: var(--text-primary);">${passed}</span>
                     <span style="font-size: 10px; color: var(--text-secondary);">passed</span>
-                  </div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                  <span style="color: #f59e0b; font-size: 16px;">${ICO.warnTriangle}</span>
-                  <div style="display: flex; flex-direction: column; line-height: 1.2;">
-                    <span style="font-size: 16px; font-weight: 600; color: var(--text-primary);">${warnings}</span>
-                    <span style="font-size: 10px; color: var(--text-secondary);">warnings</span>
                   </div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
@@ -3865,10 +3854,10 @@
       // Score Display
       if (data.scores && data.scores.overall) {
         const score = data.scores.overall.score;
-        const { passed, warnings, failed, total } = data.scores.overall;
+        const { passed, failed, total } = data.scores.overall;
         
         // Determine score color
-        let scoreColor = '#22c55e'; // green
+        let scoreColor = '#16a34a'; // green (darker for better contrast)
         let scoreLabel = 'Excellent';
         if (score < 50) {
           scoreColor = '#ef4444'; // red
@@ -3877,7 +3866,7 @@
           scoreColor = '#f59e0b'; // amber
           scoreLabel = 'Fair';
         } else if (score < 90) {
-          scoreColor = '#22c55e'; // green
+          scoreColor = '#16a34a'; // green (darker for better contrast)
           scoreLabel = 'Good';
         }
         
@@ -3919,20 +3908,13 @@
             <div style="flex: 1; min-width: 0;">
               <div style="font-size: 16px; font-weight: 600; margin-bottom: 12px; color: ${scoreColor};">${scoreLabel}</div>
 
-              <!-- Stats Grid -->
-              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 8px;">
+              <!-- Stats Grid (Pass/Fail only) -->
+              <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 8px;">
                 <div style="display: flex; align-items: center; gap: 6px;">
-                  <span style="color: #22c55e; font-size: 16px;">${ICO.checkCircle}</span>
+                  <span style="color: #16a34a; font-size: 16px;">${ICO.checkCircle}</span>
                   <div style="display: flex; flex-direction: column; line-height: 1.2;">
                     <span style="font-size: 16px; font-weight: 600; color: var(--text-primary);">${passed}</span>
                     <span style="font-size: 10px; color: var(--text-secondary);">passed</span>
-                  </div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                  <span style="color: #f59e0b; font-size: 16px;">${ICO.warnTriangle}</span>
-                  <div style="display: flex; flex-direction: column; line-height: 1.2;">
-                    <span style="font-size: 16px; font-weight: 600; color: var(--text-primary);">${warnings}</span>
-                    <span style="font-size: 10px; color: var(--text-secondary);">warnings</span>
                   </div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
@@ -4060,7 +4042,7 @@
         const { passed, failed, total } = data.scores.component;
         
         // Determine score color
-        let scoreColor = '#22c55e'; // green
+        let scoreColor = '#16a34a'; // green (darker for better contrast)
         let scoreLabel = 'Excellent';
         if (score < 50) {
           scoreColor = '#ef4444'; // red
@@ -4069,7 +4051,7 @@
           scoreColor = '#f59e0b'; // amber
           scoreLabel = 'Fair';
         } else if (score < 90) {
-          scoreColor = '#22c55e'; // green
+          scoreColor = '#16a34a'; // green (darker for better contrast)
           scoreLabel = 'Good';
         }
         
@@ -4114,7 +4096,7 @@
               <!-- Stats Grid (Pass/Fail only for components) -->
               <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 8px;">
                 <div style="display: flex; align-items: center; gap: 6px;">
-                  <span style="color: #22c55e; font-size: 16px;">${ICO.checkCircle}</span>
+                  <span style="color: #16a34a; font-size: 16px;">${ICO.checkCircle}</span>
                   <div style="display: flex; flex-direction: column; line-height: 1.2;">
                     <span style="font-size: 16px; font-weight: 600; color: var(--text-primary);">${passed}</span>
                     <span style="font-size: 10px; color: var(--text-secondary);">passed</span>
