@@ -2,7 +2,7 @@
   "name": "ctdsLint",
   "id": "1521241390290871981",
   "api": "1.0.0",
-  "main": "code.js",
+  "main": "dist/code.js",
   "ui": "ui-enhanced.html",
   "editorType": ["figma"],
   "permissions": ["currentuser"],
