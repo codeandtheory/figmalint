@@ -1461,6 +1461,9 @@ export async function validateAllComponentBindings(): Promise<{
       }
     }
 
+    // Load all pages first (required to access their children)
+    await figma.loadAllPagesAsync();
+
     // Scan all pages in the document
     for (const page of figma.root.children) {
       for (const child of page.children) {

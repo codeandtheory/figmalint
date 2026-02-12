@@ -960,6 +960,7 @@ Each text style should be bound to variables that match its size. For example, "
       };
       var findComponents = findComponents2;
       const components = [];
+      await figma.loadAllPagesAsync();
       for (const page of figma.root.children) {
         for (const child of page.children) {
           findComponents2(child, page.name);
