@@ -949,33 +949,35 @@ Each text style should be bound to variables that match its size. For example, "
     const auditChecks = [];
     const results = [];
     try {
-      let findComponents2 = function(node) {
+      let findComponents2 = function(node, pageName) {
         if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
-          components.push(node);
+          components.push({ node, pageName });
         } else if ("children" in node) {
           for (const child of node.children) {
-            findComponents2(child);
+            findComponents2(child, pageName);
           }
         }
       };
       var findComponents = findComponents2;
-      const currentPage = figma.currentPage;
       const components = [];
-      for (const child of currentPage.children) {
-        findComponents2(child);
+      for (const page of figma.root.children) {
+        for (const child of page.children) {
+          findComponents2(child, page.name);
+        }
       }
-      console.log("\u{1F9E9} [COMPONENT BINDING] Found", components.length, "components to validate");
+      console.log("\u{1F9E9} [COMPONENT BINDING] Found", components.length, "components across", figma.root.children.length, "pages");
       if (components.length === 0) {
         return { results, auditChecks };
       }
       const componentsWithIssues = [];
       for (const component of components) {
-        const result = validateComponentBindings(component);
+        const result = validateComponentBindings(component.node);
         results.push(result);
         if (!result.isFullyBound) {
           const totalRawValues = Object.values(result.rawValueCounts).reduce((a, b) => a + b, 0);
           componentsWithIssues.push({
             name: result.componentName,
+            pageName: component.pageName,
             counts: result.rawValueCounts,
             totalRawValues
           });
@@ -1017,7 +1019,7 @@ Each text style should be bound to variables that match its size. For example, "
           if (comp.counts.effect > 0) {
             issues.push(`  - ${comp.counts.effect} effect${comp.counts.effect > 1 ? "s" : ""} (should use effect/* variables)`);
           }
-          return `\u2022 Component "${comp.name}" has ${comp.totalRawValues} hard-coded value${comp.totalRawValues > 1 ? "s" : ""}:
+          return `\u2022 Component "${comp.name}" on page "${comp.pageName}" has ${comp.totalRawValues} hard-coded value${comp.totalRawValues > 1 ? "s" : ""}:
 ${issues.join("\n")}`;
         });
         auditChecks.push({

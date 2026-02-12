@@ -1445,47 +1445,52 @@ export async function validateAllComponentBindings(): Promise<{
   const results: ComponentBindingValidationResult[] = [];
   
   try {
-    // Get the current selection or current page components
-    const currentPage = figma.currentPage;
-    
-    // Find all components and component sets on the current page
-    const components: (ComponentNode | ComponentSetNode)[] = [];
-    
-    function findComponents(node: SceneNode) {
+    // Find all components and component sets across ALL pages
+    const components: Array<{
+      node: ComponentNode | ComponentSetNode;
+      pageName: string;
+    }> = [];
+
+    function findComponents(node: SceneNode, pageName: string) {
       if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
-        components.push(node);
+        components.push({ node, pageName });
       } else if ('children' in node) {
         for (const child of node.children) {
-          findComponents(child);
+          findComponents(child, pageName);
         }
       }
     }
-    
-    for (const child of currentPage.children) {
-      findComponents(child);
+
+    // Scan all pages in the document
+    for (const page of figma.root.children) {
+      for (const child of page.children) {
+        findComponents(child, page.name);
+      }
     }
-    
-    console.log('🧩 [COMPONENT BINDING] Found', components.length, 'components to validate');
-    
+
+    console.log('🧩 [COMPONENT BINDING] Found', components.length, 'components across', figma.root.children.length, 'pages');
+
     if (components.length === 0) {
       return { results, auditChecks };
     }
-    
+
     // Validate each component
     const componentsWithIssues: Array<{
       name: string;
+      pageName: string;
       counts: Record<ComponentPropertyCategory, number>;
       totalRawValues: number;
     }> = [];
     
     for (const component of components) {
-      const result = validateComponentBindings(component);
+      const result = validateComponentBindings(component.node);
       results.push(result);
-      
+
       if (!result.isFullyBound) {
         const totalRawValues = Object.values(result.rawValueCounts).reduce((a, b) => a + b, 0);
         componentsWithIssues.push({
           name: result.componentName,
+          pageName: component.pageName,
           counts: result.rawValueCounts,
           totalRawValues
         });
@@ -1513,7 +1518,7 @@ export async function validateAllComponentBindings(): Promise<{
         }
       }
 
-      // Create detailed component descriptions
+      // Create detailed component descriptions with page information
       const componentDescriptions = componentsWithIssues.map(comp => {
         const issues: string[] = [];
 
@@ -1536,7 +1541,7 @@ export async function validateAllComponentBindings(): Promise<{
           issues.push(`  - ${comp.counts.effect} effect${comp.counts.effect > 1 ? 's' : ''} (should use effect/* variables)`);
         }
 
-        return `• Component "${comp.name}" has ${comp.totalRawValues} hard-coded value${comp.totalRawValues > 1 ? 's' : ''}:\n${issues.join('\n')}`;
+        return `• Component "${comp.name}" on page "${comp.pageName}" has ${comp.totalRawValues} hard-coded value${comp.totalRawValues > 1 ? 's' : ''}:\n${issues.join('\n')}`;
       });
 
       auditChecks.push({
