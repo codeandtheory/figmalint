@@ -1,7 +1,7 @@
 /// <reference types="@figma/plugin-typings" />
 
 import { sendMessageToUI } from '../utils/figma-helpers';
-import { fetchPluginData, findComponents } from '../plugin/data-adapter';
+import { fetchVariableData, fetchComponents } from '../plugin/data-adapter';
 import {
   validateCollectionStructure,
   validateTextStylesAgainstVariables,
@@ -44,11 +44,10 @@ async function handleSystemAudit(): Promise<void> {
   try {
     console.log('🔍 Running CT/DS audit...');
 
-    // Fetch all data once via the plugin adapter
-    const data = await fetchPluginData();
-    const components = findComponents(data.pages);
+    // Fetch lightweight variable/style data (fast)
+    const data = await fetchVariableData();
 
-    // Run all system-level validations (now synchronous, data-driven)
+    // Run variable and style validations (synchronous, fast)
     const collectionValidation = validateCollectionStructure(
       data.collections, data.variables
     );
@@ -58,11 +57,16 @@ async function handleSystemAudit(): Promise<void> {
     const textStyleBindings = validateTextStyleBindings(
       data.textStyles, data.variables
     );
+
+    // Scan components (heavyweight — loads pages, yields periodically)
+    const progressCallback = (message: string) => {
+      figma.ui.postMessage({ type: 'audit-progress', data: { message } });
+    };
+    const components = await fetchComponents(progressCallback);
+
     const componentBindings = validateAllComponentBindings(
       components,
-      (message) => {
-        figma.ui.postMessage({ type: 'audit-progress', data: { message } });
-      }
+      progressCallback
     );
 
     // Combine text style checks
@@ -112,7 +116,8 @@ async function handleVariablesStylesAudit(): Promise<void> {
   try {
     console.log('🔍 Running Variables & Styles audit...');
 
-    const data = await fetchPluginData();
+    // Fetch only variable/style data — no page loading needed
+    const data = await fetchVariableData();
 
     const collectionValidation = validateCollectionStructure(
       data.collections, data.variables
@@ -167,14 +172,15 @@ async function handleComponentsAudit(): Promise<void> {
   try {
     console.log('🔍 Running Components audit...');
 
-    const data = await fetchPluginData();
-    const components = findComponents(data.pages);
+    // Scan components (loads pages, yields periodically)
+    const progressCallback = (message: string) => {
+      figma.ui.postMessage({ type: 'audit-progress', data: { message } });
+    };
+    const components = await fetchComponents(progressCallback);
 
     const componentBindings = validateAllComponentBindings(
       components,
-      (message) => {
-        figma.ui.postMessage({ type: 'audit-progress', data: { message } });
-      }
+      progressCallback
     );
 
     // Calculate score using component-specific stats (pass/fail only)

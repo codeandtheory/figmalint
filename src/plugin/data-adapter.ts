@@ -211,58 +211,76 @@ function adaptNode(node: SceneNode): LintNode {
 }
 
 // ============================================================================
-// Public: Fetch all data from the Figma Plugin API
+// Public: Lightweight data fetch (variables, collections, text styles only)
 // ============================================================================
 
 /**
- * Gather all data needed for the full audit from the Figma Plugin API.
+ * Fetch only variables, collections, and text styles from the Figma Plugin API.
  *
- * The caller (message-handler) invokes this once and then passes the
- * resulting `LintData` to whichever validators are needed.
+ * This is a fast operation that does NOT load pages or traverse the node tree.
+ * Use this for audits that only need variable/style data (e.g., variables-styles).
  */
-export async function fetchPluginData(): Promise<LintData> {
-  // Variables & collections
+export async function fetchVariableData(): Promise<Pick<LintData, 'collections' | 'variables' | 'textStyles'>> {
   const rawCollections = await figma.variables.getLocalVariableCollectionsAsync();
   const rawVariables = await figma.variables.getLocalVariablesAsync();
-
-  const collections = rawCollections.map(adaptCollection);
-  const variables = rawVariables.map(adaptVariable);
-
-  // Text styles
   const rawTextStyles = await figma.getLocalTextStylesAsync();
-  const textStyles = rawTextStyles.map(adaptTextStyle);
 
-  // Pages & node tree – load all pages for component scanning
-  await figma.loadAllPagesAsync();
-  const pages: LintData['pages'] = figma.root.children.map(page => ({
-    name: page.name,
-    children: page.children.map(child => adaptNode(child)),
-  }));
-
-  return { collections, variables, textStyles, pages };
+  return {
+    collections: rawCollections.map(adaptCollection),
+    variables: rawVariables.map(adaptVariable),
+    textStyles: rawTextStyles.map(adaptTextStyle),
+  };
 }
 
-/**
- * Walk the adapted page tree and return all components annotated with
- * their containing page name.
- */
-export function findComponents(pages: LintData['pages']): LintComponent[] {
-  const components: LintComponent[] = [];
+// ============================================================================
+// Public: Heavyweight component scan (loads pages, yields periodically)
+// ============================================================================
 
-  function walk(node: LintNode, pageName: string): void {
+/**
+ * Load all pages and scan for components, yielding to the event loop
+ * periodically so the Figma plugin UI stays responsive.
+ *
+ * Only call this when component data is actually needed.
+ */
+export async function fetchComponents(
+  onProgress?: (message: string) => void
+): Promise<LintComponent[]> {
+  const components: LintComponent[] = [];
+  let nodesProcessed = 0;
+
+  async function walk(node: SceneNode, pageName: string): Promise<void> {
     if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
-      components.push({ node, pageName });
+      // Adapt only this component's subtree (not the entire document)
+      components.push({ node: adaptNode(node), pageName });
+      // Don't recurse into adapted children — adaptNode already handles that
+      return;
     }
-    if (node.children) {
+
+    if ('children' in node) {
       for (const child of node.children) {
-        walk(child, pageName);
+        nodesProcessed++;
+
+        // Yield every 50 nodes to keep UI responsive
+        if (nodesProcessed % 50 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        await walk(child, pageName);
       }
     }
   }
 
-  for (const page of pages) {
+  onProgress?.('Loading all pages...');
+  await figma.loadAllPagesAsync();
+
+  const totalPages = figma.root.children.length;
+  for (let i = 0; i < totalPages; i++) {
+    const page = figma.root.children[i];
+    onProgress?.(`Scanning page ${i + 1}/${totalPages}: "${page.name}"`);
+
+    nodesProcessed = 0;
     for (const child of page.children) {
-      walk(child, page.name);
+      await walk(child, page.name);
     }
   }
 

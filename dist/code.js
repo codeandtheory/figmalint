@@ -154,35 +154,43 @@
     }
     return result;
   }
-  async function fetchPluginData() {
+  async function fetchVariableData() {
     const rawCollections = await figma.variables.getLocalVariableCollectionsAsync();
     const rawVariables = await figma.variables.getLocalVariablesAsync();
-    const collections = rawCollections.map(adaptCollection);
-    const variables = rawVariables.map(adaptVariable);
     const rawTextStyles = await figma.getLocalTextStylesAsync();
-    const textStyles = rawTextStyles.map(adaptTextStyle);
-    await figma.loadAllPagesAsync();
-    const pages = figma.root.children.map((page) => ({
-      name: page.name,
-      children: page.children.map((child) => adaptNode(child))
-    }));
-    return { collections, variables, textStyles, pages };
+    return {
+      collections: rawCollections.map(adaptCollection),
+      variables: rawVariables.map(adaptVariable),
+      textStyles: rawTextStyles.map(adaptTextStyle)
+    };
   }
-  function findComponents(pages) {
+  async function fetchComponents(onProgress) {
     const components = [];
-    function walk(node, pageName) {
+    let nodesProcessed = 0;
+    async function walk(node, pageName) {
       if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
-        components.push({ node, pageName });
+        components.push({ node: adaptNode(node), pageName });
+        return;
       }
-      if (node.children) {
+      if ("children" in node) {
         for (const child of node.children) {
-          walk(child, pageName);
+          nodesProcessed++;
+          if (nodesProcessed % 50 === 0) {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          }
+          await walk(child, pageName);
         }
       }
     }
-    for (const page of pages) {
+    onProgress == null ? void 0 : onProgress("Loading all pages...");
+    await figma.loadAllPagesAsync();
+    const totalPages = figma.root.children.length;
+    for (let i = 0; i < totalPages; i++) {
+      const page = figma.root.children[i];
+      onProgress == null ? void 0 : onProgress(`Scanning page ${i + 1}/${totalPages}: "${page.name}"`);
+      nodesProcessed = 0;
       for (const child of page.children) {
-        walk(child, page.name);
+        await walk(child, page.name);
       }
     }
     return components;
@@ -1209,8 +1217,7 @@ To fix: Select this component in Figma, then bind the listed properties to their
   async function handleSystemAudit() {
     try {
       console.log("\u{1F50D} Running CT/DS audit...");
-      const data = await fetchPluginData();
-      const components = findComponents(data.pages);
+      const data = await fetchVariableData();
       const collectionValidation = validateCollectionStructure(
         data.collections,
         data.variables
@@ -1224,11 +1231,13 @@ To fix: Select this component in Figma, then bind the listed properties to their
         data.textStyles,
         data.variables
       );
+      const progressCallback = (message) => {
+        figma.ui.postMessage({ type: "audit-progress", data: { message } });
+      };
+      const components = await fetchComponents(progressCallback);
       const componentBindings = validateAllComponentBindings(
         components,
-        (message) => {
-          figma.ui.postMessage({ type: "audit-progress", data: { message } });
-        }
+        progressCallback
       );
       const combinedTextStyleSync = [
         ...textStyleSync.auditChecks,
@@ -1265,7 +1274,7 @@ To fix: Select this component in Figma, then bind the listed properties to their
   async function handleVariablesStylesAudit() {
     try {
       console.log("\u{1F50D} Running Variables & Styles audit...");
-      const data = await fetchPluginData();
+      const data = await fetchVariableData();
       const collectionValidation = validateCollectionStructure(
         data.collections,
         data.variables
@@ -1310,13 +1319,13 @@ To fix: Select this component in Figma, then bind the listed properties to their
   async function handleComponentsAudit() {
     try {
       console.log("\u{1F50D} Running Components audit...");
-      const data = await fetchPluginData();
-      const components = findComponents(data.pages);
+      const progressCallback = (message) => {
+        figma.ui.postMessage({ type: "audit-progress", data: { message } });
+      };
+      const components = await fetchComponents(progressCallback);
       const componentBindings = validateAllComponentBindings(
         components,
-        (message) => {
-          figma.ui.postMessage({ type: "audit-progress", data: { message } });
-        }
+        progressCallback
       );
       const componentStats = calculateComponentStats(componentBindings.auditChecks);
       sendMessageToUI("components-audit-result", {
