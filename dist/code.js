@@ -993,13 +993,13 @@ Each text style should be bound to variables that match its size. For example, "
       });
       for (let i = 0; i < totalComponents; i++) {
         const component = components[i];
-        if (i % 5 === 0) {
+        if (i % 10 === 0 || i === totalComponents - 1) {
           figma.ui.postMessage({
             type: "audit-progress",
             data: { message: `Scanning ${totalComponents} component${totalComponents !== 1 ? "s" : ""}: ${i + 1}/${totalComponents} validated...` }
           });
-          await new Promise((resolve) => setTimeout(resolve, 0));
         }
+        await new Promise((resolve) => setTimeout(resolve, 0));
         const result = validateComponentBindings(component.node);
         results.push(result);
         if (!result.isFullyBound) {

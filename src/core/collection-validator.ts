@@ -1514,15 +1514,16 @@ export async function validateAllComponentBindings(): Promise<{
     for (let i = 0; i < totalComponents; i++) {
       const component = components[i];
 
-      // Send progress update and yield to UI every 5 components
-      if (i % 5 === 0) {
+      // Update progress message every 10 components to avoid too many UI updates
+      if (i % 10 === 0 || i === totalComponents - 1) {
         figma.ui.postMessage({
           type: 'audit-progress',
           data: { message: `Scanning ${totalComponents} component${totalComponents !== 1 ? 's' : ''}: ${i + 1}/${totalComponents} validated...` }
         });
-        // Allow Figma UI to update by yielding to event loop
-        await new Promise(resolve => setTimeout(resolve, 0));
       }
+
+      // Yield to event loop after EVERY component to keep UI responsive
+      await new Promise(resolve => setTimeout(resolve, 0));
 
       const result = validateComponentBindings(component.node);
       results.push(result);
