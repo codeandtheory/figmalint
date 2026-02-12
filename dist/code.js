@@ -480,9 +480,6 @@
   var TYPOGRAPHY_PROPERTIES = [
     "fontFamily",
     "fontSize",
-    "fontWeight",
-    "fontStyle",
-    // Figma uses fontStyle for some text styles (maps to weight or style)
     "letterSpacing",
     "lineHeight"
   ];
@@ -529,14 +526,6 @@
               case "fontSize":
                 expectedPattern = `font-size/${size}`;
                 isCorrectBinding = variableName.includes("font-size") && (variableName.endsWith(size) || variableName.includes(`/${size}`));
-                break;
-              case "fontWeight":
-                expectedPattern = `font-weight/*`;
-                isCorrectBinding = variableName.includes("font-weight");
-                break;
-              case "fontStyle":
-                expectedPattern = `font-weight/*`;
-                isCorrectBinding = variableName.includes("font-weight") || variableName.includes("font-style");
                 break;
               case "letterSpacing":
                 expectedPattern = `letter-spacing/${size}`;
@@ -611,9 +600,6 @@
                   return `${prop} \u2192 font-family/${category}`;
                 case "fontSize":
                   return `${prop} \u2192 font-size/${category}/${size}`;
-                case "fontWeight":
-                case "fontStyle":
-                  return `${prop} \u2192 font-weight/${category}/...`;
                 case "lineHeight":
                   return `${prop} \u2192 line-height/${category}/${size}`;
                 case "letterSpacing":

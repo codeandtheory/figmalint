@@ -793,8 +793,6 @@ export async function validateTextStylesAgainstVariables(): Promise<{
 const TYPOGRAPHY_PROPERTIES = [
   'fontFamily',
   'fontSize',
-  'fontWeight',
-  'fontStyle',  // Figma uses fontStyle for some text styles (maps to weight or style)
   'letterSpacing',
   'lineHeight'
 ] as const;
@@ -928,16 +926,6 @@ export async function validateTextStyleBindings(): Promise<{
               isCorrectBinding = variableName.includes('font-size') &&
                                  (variableName.endsWith(size) || variableName.includes(`/${size}`));
               break;
-            case 'fontWeight':
-              // font-weight is flexible, just needs to be a font-weight variable
-              expectedPattern = `font-weight/*`;
-              isCorrectBinding = variableName.includes('font-weight');
-              break;
-            case 'fontStyle':
-              // fontStyle in Figma can map to font-weight variables (Regular, Bold, etc.)
-              expectedPattern = `font-weight/*`;
-              isCorrectBinding = variableName.includes('font-weight') || variableName.includes('font-style');
-              break;
             case 'letterSpacing':
               // letter-spacing can be "letter-spacing/{size}" or "letter-spacing/{category}/{size}"
               expectedPattern = `letter-spacing/${size}`;
@@ -1035,9 +1023,6 @@ export async function validateTextStyleBindings(): Promise<{
                 return `${prop} → font-family/${category}`;
               case 'fontSize':
                 return `${prop} → font-size/${category}/${size}`;
-              case 'fontWeight':
-              case 'fontStyle':
-                return `${prop} → font-weight/${category}/...`;
               case 'lineHeight':
                 return `${prop} → line-height/${category}/${size}`;
               case 'letterSpacing':
