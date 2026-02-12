@@ -879,17 +879,19 @@ export async function validateTextStyleBindings(): Promise<{
     }> = [];
     
     for (const style of textStyles) {
-      // Parse text style name: "category/size" or "category/subcategory/size"
+      // Parse text style name: "category/size/weight" (e.g., "display/2xl/light")
       const nameParts = style.name.split('/').map(p => p.toLowerCase().trim());
-      
-      // Skip styles that don't follow the category/size pattern
+
+      // Skip styles that don't follow the expected pattern
       if (nameParts.length < 2) {
         console.log(`🔤 [TEXT BINDING] Skipping "${style.name}" - doesn't match category/size pattern`);
         continue;
       }
-      
+
       const category = nameParts[0]; // e.g., "display", "heading", "body"
-      const size = nameParts[nameParts.length - 1]; // e.g., "xl", "lg", "md" (last part)
+      // For 3-part names like "display/2xl/light", size is the middle part (2xl)
+      // For 2-part names like "display/2xl", size is the last part (2xl)
+      const size = nameParts.length >= 3 ? nameParts[1] : nameParts[nameParts.length - 1];
       
       const boundProperties: TextStyleBindingResult['boundProperties'] = [];
       const unboundProperties: TypographyProperty[] = [];

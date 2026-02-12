@@ -505,7 +505,7 @@
           continue;
         }
         const category = nameParts[0];
-        const size = nameParts[nameParts.length - 1];
+        const size = nameParts.length >= 3 ? nameParts[1] : nameParts[nameParts.length - 1];
         const boundProperties = [];
         const unboundProperties = [];
         const boundVars = style.boundVariables || {};
