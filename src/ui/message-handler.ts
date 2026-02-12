@@ -12,7 +12,7 @@ import {
  * Main message handler for UI communication (CTDS Audit only)
  */
 export async function handleUIMessage(msg: any): Promise<void> {
-  const { type, data } = msg;
+  const { type } = msg;
   console.log('Received message:', type);
 
   try {

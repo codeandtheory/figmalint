@@ -201,7 +201,7 @@ Consistent sub-categories across all categories make your design system more pre
               });
             }
             if (subResult.patternValidation) {
-              const { allMatch, invalidNames, patternDescription, examples } = subResult.patternValidation;
+              const { patternDescription, examples } = subResult.patternValidation;
               if (subResult.found.length === 0) {
                 const exampleVars = examples.slice(0, 3).map((ex) => `  - ${ex}`).join("\n");
                 auditChecks.push({
@@ -856,7 +856,7 @@ Each text style should be bound to variables that match its size. For example, "
       const effects = node.effects;
       const effectBindings = boundVars.effects || [];
       effects.forEach((effect, index) => {
-        if (effect.visible !== false) {
+        if ("visible" in effect && effect.visible !== false) {
           const hasBinding = effectBindings[index] && effectBindings[index].id;
           if (!hasBinding) {
             let effectDesc = effect.type.toLowerCase().replace("_", " ");
@@ -1071,7 +1071,7 @@ To fix: Select each component in Figma, then bind the listed properties to their
 
   // src/ui/message-handler.ts
   async function handleUIMessage(msg) {
-    const { type, data } = msg;
+    const { type } = msg;
     console.log("Received message:", type);
     try {
       switch (type) {

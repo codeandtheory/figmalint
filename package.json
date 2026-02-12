@@ -1,7 +1,7 @@
 {
   "name": "ctdslint",
   "version": "3.0.0",
-  "description": "ctdsLint - CTDS (Comprehensive Design Token System) audit tool for Figma. Validates variable collections, text styles, and component variable bindings for design system compliance.",
+  "description": "ctdsLint - CTDS (Code & Theory Design System) audit tool for Figma. Validates variable collections, text styles, and component variable bindings for design system compliance.",
   "main": "dist/code.js",
   "scripts": {
     "build": "npm run bundle && npm run copy-assets",

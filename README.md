@@ -1,6 +1,6 @@
 # ctdsLint
 
-A Figma plugin that audits your design system for CTDS (Comprehensive Design Token System) compliance. Validates variable collections, text styles, and component variable bindings to ensure your design system follows best practices.
+A Figma plugin that audits your design system for CTDS (Code & Theory Design System) compliance. Validates variable collections, text styles, and component variable bindings to ensure your design system follows best practices.
 
 ## Features
 
@@ -21,28 +21,7 @@ Each validation category receives a score based on:
 - Overall percentage of passing checks
 - Detailed breakdown by category (collection structure, text styles, component bindings)
 
-### Design Token Detection
-
-The plugin can analyze components to detect:
-
-- Figma Variables in use
-- Named Styles (fill, text, effect styles)
-- Hard-coded values that should be replaced with tokens
-- Token categorization (colors, spacing, typography, effects, borders)
-
-### Auto-Fix Capabilities
-
-Fix modules are available for:
-
-- **Token binding** — Bind hard-coded colors and spacing values to design system variables
-- **Layer renaming** — Detect generic Figma names and suggest semantic alternatives with multiple naming strategies
-
 ## Getting Started
-
-### From Figma Community
-
-1. Visit [ctdsLint on Figma Community](https://www.figma.com/community/plugin/1521241390290871981/figmalint)
-2. Click "Install"
 
 ### Manual Installation (Development)
 
@@ -67,13 +46,7 @@ src/
 ├── code.ts                      # Plugin entry point
 ├── types.ts                     # TypeScript definitions
 ├── core/
-│   ├── collection-validator.ts  # Collection structure, text style, and component binding validation
-│   ├── token-analyzer.ts        # Design token detection and categorization
-│   └── types/
-│       └── consistency.ts       # Consistency check types
-├── fixes/
-│   ├── token-fixer.ts           # Token binding (color + spacing variables)
-│   └── naming-fixer.ts          # Layer renaming with semantic detection
+│   └── collection-validator.ts  # CTDS validation logic
 ├── ui/
 │   └── message-handler.ts       # Plugin ↔ UI message routing
 └── utils/
@@ -132,12 +105,3 @@ You can customize these requirements in `src/core/collection-validator.ts`.
 ## License
 
 ISC — see [LICENSE](LICENSE) for details.
-
-## Support
-
-- **Issues**: [GitHub Issues](https://github.com/southleft/figmalint/issues)
-- **Discussions**: Share ideas and get help from the community
-
----
-
-Built by [Southleft](https://southleft.com)

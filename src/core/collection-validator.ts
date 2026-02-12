@@ -346,7 +346,7 @@ export async function validateCollectionStructure(
           
           // Pattern validation issues
           if (subResult.patternValidation) {
-            const { allMatch, invalidNames, patternDescription, examples } = subResult.patternValidation;
+            const { patternDescription, examples } = subResult.patternValidation;
             if (subResult.found.length === 0) {
               // No valid sub-categories at all - this is a real problem
               const exampleVars = examples.slice(0, 3).map(ex => `  - ${ex}`).join('\n');
@@ -853,13 +853,15 @@ type TypographyProperty = typeof TYPOGRAPHY_PROPERTIES[number];
 /**
  * Maps Figma text style bound variable keys to our property names
  */
-const FIGMA_BOUND_VAR_KEYS: Record<string, TypographyProperty> = {
-  'fontFamily': 'fontFamily',
-  'fontSize': 'fontSize',
-  'fontWeight': 'fontWeight',
-  'letterSpacing': 'letterSpacing',
-  'lineHeight': 'lineHeight'
-};
+// Mapping of Figma's bound variable keys to typography properties
+// Note: fontWeight is not currently supported in Figma's variable binding API
+// const FIGMA_BOUND_VAR_KEYS: Record<string, TypographyProperty> = {
+//   'fontFamily': 'fontFamily',
+//   'fontSize': 'fontSize',
+//   'fontWeight': 'fontWeight',
+//   'letterSpacing': 'letterSpacing',
+//   'lineHeight': 'lineHeight'
+// };
 
 /**
  * Result of validating a single text style's variable bindings
@@ -1345,7 +1347,7 @@ function checkNodeForRawValues(node: SceneNode): NodeRawValueResult {
     const effectBindings = boundVars.effects || [];
     
     effects.forEach((effect, index) => {
-      if (effect.visible !== false) {
+      if ('visible' in effect && effect.visible !== false) {
         const hasBinding = effectBindings[index] && effectBindings[index].id;
         if (!hasBinding) {
           let effectDesc = effect.type.toLowerCase().replace('_', ' ');
