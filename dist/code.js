@@ -964,7 +964,7 @@ Each text style should be bound to variables that match its size. For example, "
       console.log("\u{1F9E9} [COMPONENT BINDING] Loading all pages...");
       figma.ui.postMessage({
         type: "audit-progress",
-        message: "Loading all pages..."
+        data: { message: "Loading all pages..." }
       });
       await figma.loadAllPagesAsync();
       console.log("\u{1F9E9} [COMPONENT BINDING] All pages loaded");
@@ -974,7 +974,7 @@ Each text style should be bound to variables that match its size. For example, "
         const page = figma.root.children[i];
         figma.ui.postMessage({
           type: "audit-progress",
-          message: `Scanning page ${i + 1}/${totalPages}: "${page.name}"`
+          data: { message: `Scanning page ${i + 1}/${totalPages}: "${page.name}"` }
         });
         await new Promise((resolve) => setTimeout(resolve, 0));
         for (const child of page.children) {
@@ -989,14 +989,14 @@ Each text style should be bound to variables that match its size. For example, "
       const totalComponents = components.length;
       figma.ui.postMessage({
         type: "audit-progress",
-        message: `${totalComponents} component${totalComponents !== 1 ? "s are" : " is"} being scanned, please wait patiently...`
+        data: { message: `${totalComponents} component${totalComponents !== 1 ? "s are" : " is"} being scanned, please wait patiently...` }
       });
       for (let i = 0; i < totalComponents; i++) {
         const component = components[i];
         if (i % 5 === 0) {
           figma.ui.postMessage({
             type: "audit-progress",
-            message: `Scanning ${totalComponents} component${totalComponents !== 1 ? "s" : ""}: ${i + 1}/${totalComponents} validated...`
+            data: { message: `Scanning ${totalComponents} component${totalComponents !== 1 ? "s" : ""}: ${i + 1}/${totalComponents} validated...` }
           });
           await new Promise((resolve) => setTimeout(resolve, 0));
         }
@@ -1014,7 +1014,7 @@ Each text style should be bound to variables that match its size. For example, "
       }
       figma.ui.postMessage({
         type: "audit-progress",
-        message: `Completed scanning ${totalComponents} component${totalComponents !== 1 ? "s" : ""}!`
+        data: { message: `Completed scanning ${totalComponents} component${totalComponents !== 1 ? "s" : ""}!` }
       });
       const totalValidated = results.length;
       const compliantComponents = results.filter((r) => r.isFullyBound).length;

@@ -1467,7 +1467,7 @@ export async function validateAllComponentBindings(): Promise<{
     console.log('🧩 [COMPONENT BINDING] Loading all pages...');
     figma.ui.postMessage({
       type: 'audit-progress',
-      message: 'Loading all pages...'
+      data: { message: 'Loading all pages...' }
     });
     await figma.loadAllPagesAsync();
     console.log('🧩 [COMPONENT BINDING] All pages loaded');
@@ -1480,7 +1480,7 @@ export async function validateAllComponentBindings(): Promise<{
       const page = figma.root.children[i];
       figma.ui.postMessage({
         type: 'audit-progress',
-        message: `Scanning page ${i + 1}/${totalPages}: "${page.name}"`
+        data: { message: `Scanning page ${i + 1}/${totalPages}: "${page.name}"` }
       });
 
       // Yield to UI after each page to prevent freezing
@@ -1508,7 +1508,7 @@ export async function validateAllComponentBindings(): Promise<{
     const totalComponents = components.length;
     figma.ui.postMessage({
       type: 'audit-progress',
-      message: `${totalComponents} component${totalComponents !== 1 ? 's are' : ' is'} being scanned, please wait patiently...`
+      data: { message: `${totalComponents} component${totalComponents !== 1 ? 's are' : ' is'} being scanned, please wait patiently...` }
     });
 
     for (let i = 0; i < totalComponents; i++) {
@@ -1518,7 +1518,7 @@ export async function validateAllComponentBindings(): Promise<{
       if (i % 5 === 0) {
         figma.ui.postMessage({
           type: 'audit-progress',
-          message: `Scanning ${totalComponents} component${totalComponents !== 1 ? 's' : ''}: ${i + 1}/${totalComponents} validated...`
+          data: { message: `Scanning ${totalComponents} component${totalComponents !== 1 ? 's' : ''}: ${i + 1}/${totalComponents} validated...` }
         });
         // Allow Figma UI to update by yielding to event loop
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -1541,7 +1541,7 @@ export async function validateAllComponentBindings(): Promise<{
     // Final progress update
     figma.ui.postMessage({
       type: 'audit-progress',
-      message: `Completed scanning ${totalComponents} component${totalComponents !== 1 ? 's' : ''}!`
+      data: { message: `Completed scanning ${totalComponents} component${totalComponents !== 1 ? 's' : ''}!` }
     });
 
     // Generate audit checks

@@ -3463,6 +3463,10 @@
     function handlePluginMessage(event) {
       const { type, data } = event.data.pluginMessage || {};
 
+      if (type === 'audit-progress') {
+        console.log('📊 Received audit-progress message:', data);
+      }
+
       switch (type) {
         case 'enhanced-analysis-result':
           handleEnhancedAnalysisResult(data);
@@ -3553,12 +3557,16 @@
 
     // Handle Audit Progress Updates
     function handleAuditProgress(data) {
+      console.log('📊 Progress update received:', data);
       const progressContainer = document.getElementById('progress-container');
       const progressText = document.getElementById('progress-text');
 
       if (progressContainer && progressText) {
         progressContainer.classList.remove('hidden');
         progressText.textContent = data.message || 'Processing...';
+        console.log('📊 Progress text updated to:', data.message);
+      } else {
+        console.error('📊 Progress elements not found:', { progressContainer, progressText });
       }
     }
 
