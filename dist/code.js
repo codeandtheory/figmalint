@@ -959,9 +959,23 @@ Each text style should be bound to variables that match its size. For example, "
         }
       };
       var findComponents = findComponents2;
+      console.log("\u{1F9E9} [COMPONENT BINDING] Starting validation...");
       const components = [];
+      console.log("\u{1F9E9} [COMPONENT BINDING] Loading all pages...");
+      figma.ui.postMessage({
+        type: "audit-progress",
+        message: "Loading all pages..."
+      });
       await figma.loadAllPagesAsync();
-      for (const page of figma.root.children) {
+      console.log("\u{1F9E9} [COMPONENT BINDING] All pages loaded");
+      const totalPages = figma.root.children.length;
+      console.log("\u{1F9E9} [COMPONENT BINDING] Scanning", totalPages, "pages for components...");
+      for (let i = 0; i < totalPages; i++) {
+        const page = figma.root.children[i];
+        figma.ui.postMessage({
+          type: "audit-progress",
+          message: `Scanning page ${i + 1}/${totalPages}: "${page.name}"`
+        });
         for (const child of page.children) {
           findComponents2(child, page.name);
         }
@@ -971,7 +985,19 @@ Each text style should be bound to variables that match its size. For example, "
         return { results, auditChecks };
       }
       const componentsWithIssues = [];
-      for (const component of components) {
+      const totalComponents = components.length;
+      figma.ui.postMessage({
+        type: "audit-progress",
+        message: `${totalComponents} component${totalComponents !== 1 ? "s are" : " is"} being scanned, please wait patiently...`
+      });
+      for (let i = 0; i < totalComponents; i++) {
+        const component = components[i];
+        if (i % 10 === 0 || i === totalComponents - 1) {
+          figma.ui.postMessage({
+            type: "audit-progress",
+            message: `Scanning ${totalComponents} component${totalComponents !== 1 ? "s" : ""}: ${i + 1}/${totalComponents} validated...`
+          });
+        }
         const result = validateComponentBindings(component.node);
         results.push(result);
         if (!result.isFullyBound) {
@@ -984,7 +1010,7 @@ Each text style should be bound to variables that match its size. For example, "
           });
         }
       }
-      const totalComponents = results.length;
+      const totalValidated = results.length;
       const compliantComponents = results.filter((r) => r.isFullyBound).length;
       if (componentsWithIssues.length > 0) {
         const totalCounts = {
@@ -1033,15 +1059,15 @@ ${componentDescriptions.join("\n\n")}
 To fix: Select each component in Figma, then bind the listed properties to their corresponding variables in your Theme collection. This ensures consistent styling and makes design updates easier.`
         });
       }
-      if (compliantComponents === totalComponents && totalComponents > 0) {
+      if (compliantComponents === totalValidated && totalValidated > 0) {
         auditChecks.push({
           check: "Component variable bindings",
           status: "pass",
-          suggestion: `All ${totalComponents} components use theme variables for visual properties`
+          suggestion: `All ${totalValidated} components use theme variables for visual properties`
         });
       }
       console.log("\u{1F9E9} [COMPONENT BINDING] Validation complete:", {
-        total: totalComponents,
+        total: totalValidated,
         compliant: compliantComponents,
         withIssues: componentsWithIssues.length
       });

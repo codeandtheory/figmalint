@@ -97,6 +97,11 @@
       box-sizing: border-box;
     }
 
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
     body {
       font-family: var(--font-family);
       margin: 0;
@@ -2234,6 +2239,14 @@
           </div>
         </div>
 
+        <!-- Progress Message -->
+        <div id="progress-container" class="hidden" style="margin-bottom: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; font-size: 12px; color: var(--text-secondary);">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div class="spinner" style="width: 16px; height: 16px; border: 2px solid var(--border-color); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+            <span id="progress-text">Loading...</span>
+          </div>
+        </div>
+
         <!-- CTDS Audit Results -->
         <div id="system-results" class="hidden">
           <div class="collapsible">
@@ -3449,6 +3462,9 @@
         case 'system-audit-result':
           handleSystemAuditResult(data);
           break;
+        case 'audit-progress':
+          handleAuditProgress(data);
+          break;
         case 'metadata-result':
           // Handle old message format for backward compatibility
           handleEnhancedAnalysisResult({
@@ -3527,9 +3543,25 @@
       }
     }
 
+    // Handle Audit Progress Updates
+    function handleAuditProgress(data) {
+      const progressContainer = document.getElementById('progress-container');
+      const progressText = document.getElementById('progress-text');
+
+      if (progressContainer && progressText) {
+        progressContainer.classList.remove('hidden');
+        progressText.textContent = data.message || 'Processing...';
+      }
+    }
+
     // Handle API Key Saved
     // Handle System Audit Result (CTDS Audit)
     function handleSystemAuditResult(data) {
+      // Hide progress indicator when results arrive
+      const progressContainer = document.getElementById('progress-container');
+      if (progressContainer) {
+        progressContainer.classList.add('hidden');
+      }
       console.log('UI received system audit result:', data);
       
       if (data.error) {

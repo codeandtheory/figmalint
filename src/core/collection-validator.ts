@@ -1445,6 +1445,8 @@ export async function validateAllComponentBindings(): Promise<{
   const results: ComponentBindingValidationResult[] = [];
   
   try {
+    console.log('🧩 [COMPONENT BINDING] Starting validation...');
+
     // Find all components and component sets across ALL pages
     const components: Array<{
       node: ComponentNode | ComponentSetNode;
@@ -1462,10 +1464,25 @@ export async function validateAllComponentBindings(): Promise<{
     }
 
     // Load all pages first (required to access their children)
+    console.log('🧩 [COMPONENT BINDING] Loading all pages...');
+    figma.ui.postMessage({
+      type: 'audit-progress',
+      message: 'Loading all pages...'
+    });
     await figma.loadAllPagesAsync();
+    console.log('🧩 [COMPONENT BINDING] All pages loaded');
 
     // Scan all pages in the document
-    for (const page of figma.root.children) {
+    const totalPages = figma.root.children.length;
+    console.log('🧩 [COMPONENT BINDING] Scanning', totalPages, 'pages for components...');
+
+    for (let i = 0; i < totalPages; i++) {
+      const page = figma.root.children[i];
+      figma.ui.postMessage({
+        type: 'audit-progress',
+        message: `Scanning page ${i + 1}/${totalPages}: "${page.name}"`
+      });
+
       for (const child of page.children) {
         findComponents(child, page.name);
       }
@@ -1484,8 +1501,24 @@ export async function validateAllComponentBindings(): Promise<{
       counts: Record<ComponentPropertyCategory, number>;
       totalRawValues: number;
     }> = [];
-    
-    for (const component of components) {
+
+    const totalComponents = components.length;
+    figma.ui.postMessage({
+      type: 'audit-progress',
+      message: `${totalComponents} component${totalComponents !== 1 ? 's are' : ' is'} being scanned, please wait patiently...`
+    });
+
+    for (let i = 0; i < totalComponents; i++) {
+      const component = components[i];
+
+      // Send progress update every 10 components or for the last one
+      if (i % 10 === 0 || i === totalComponents - 1) {
+        figma.ui.postMessage({
+          type: 'audit-progress',
+          message: `Scanning ${totalComponents} component${totalComponents !== 1 ? 's' : ''}: ${i + 1}/${totalComponents} validated...`
+        });
+      }
+
       const result = validateComponentBindings(component.node);
       results.push(result);
 
@@ -1499,9 +1532,9 @@ export async function validateAllComponentBindings(): Promise<{
         });
       }
     }
-    
+
     // Generate audit checks
-    const totalComponents = results.length;
+    const totalValidated = results.length;
     const compliantComponents = results.filter(r => r.isFullyBound).length;
     
     if (componentsWithIssues.length > 0) {
@@ -1554,16 +1587,16 @@ export async function validateAllComponentBindings(): Promise<{
       });
     }
     
-    if (compliantComponents === totalComponents && totalComponents > 0) {
+    if (compliantComponents === totalValidated && totalValidated > 0) {
       auditChecks.push({
         check: 'Component variable bindings',
         status: 'pass',
-        suggestion: `All ${totalComponents} components use theme variables for visual properties`
+        suggestion: `All ${totalValidated} components use theme variables for visual properties`
       });
     }
-    
+
     console.log('🧩 [COMPONENT BINDING] Validation complete:', {
-      total: totalComponents,
+      total: totalValidated,
       compliant: compliantComponents,
       withIssues: componentsWithIssues.length
     });
