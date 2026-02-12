@@ -11,6 +11,7 @@ export interface AuditCheck {
   check: string;
   status: 'pass' | 'fail' | 'warning';
   suggestion: string;
+  pageName?: string;
 }
 
 // Utility Types

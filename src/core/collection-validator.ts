@@ -260,7 +260,7 @@ export async function validateCollectionStructure(
         
         // Collection doesn't exist - suggest creating it (info, not failure)
         console.log(`ℹ️ [COLLECTION] No "${requirement.displayName}" collection found - suggesting creation`);
-        const categoryList = requirement.requiredCategories.map(c => c.name).join(', ');
+        // const categoryList = requirement.requiredCategories.map(c => c.name).join(', ');
 
         const examples = requirement.requiredCategories.map(cat => {
           switch (cat.name) {
@@ -1625,6 +1625,190 @@ export async function validateAllComponentBindings(): Promise<{
       results,
       auditChecks: [{
         check: 'Component variable bindings',
+        status: 'warning',
+        suggestion: `Could not validate component bindings: ${error instanceof Error ? error.message : 'Unknown error'}`
+      }]
+    };
+  }
+}
+
+/**
+ * Validate components on the current page for variable bindings
+ * 
+ * @returns Audit checks for component variable usage on current page
+ */
+export async function validateCurrentPageComponentBindings(): Promise<{
+  results: ComponentBindingValidationResult[];
+  auditChecks: AuditCheck[];
+}> {
+  const auditChecks: AuditCheck[] = [];
+  const results: ComponentBindingValidationResult[] = [];
+  
+  try {
+    console.log('🧩 [COMPONENT BINDING - CURRENT PAGE] Starting validation...');
+
+    // Find all components and component sets on the CURRENT page only
+    const components: Array<{
+      node: ComponentNode | ComponentSetNode;
+      pageName: string;
+    }> = [];
+
+    let nodesProcessed = 0;
+    const currentPage = figma.currentPage;
+    const pageName = currentPage.name;
+
+    // Async recursive function with periodic yields
+    async function findComponents(node: SceneNode): Promise<void> {
+      if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
+        components.push({ node, pageName });
+      }
+
+      if ('children' in node) {
+        for (const child of node.children) {
+          nodesProcessed++;
+
+          // Yield every 50 nodes to keep UI responsive on large pages
+          if (nodesProcessed % 50 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+          }
+
+          await findComponents(child);
+        }
+      }
+    }
+
+    // Scan current page only (no need to load all pages)
+    console.log('🧩 [COMPONENT BINDING - CURRENT PAGE] Scanning page:', pageName);
+    figma.ui.postMessage({
+      type: 'audit-progress',
+      data: { message: `Scanning current page: "${pageName}"` }
+    });
+
+    for (const child of currentPage.children) {
+      await findComponents(child);
+    }
+
+    console.log('🧩 [COMPONENT BINDING - CURRENT PAGE] Found', components.length, 'components on page:', pageName);
+
+    if (components.length === 0) {
+      return { results, auditChecks };
+    }
+
+    // Validate each component
+    const componentsWithIssues: Array<{
+      name: string;
+      pageName: string;
+      counts: Record<ComponentPropertyCategory, number>;
+      totalRawValues: number;
+    }> = [];
+
+    const totalComponents = components.length;
+    figma.ui.postMessage({
+      type: 'audit-progress',
+      data: { message: `${totalComponents} component${totalComponents !== 1 ? 's are' : ' is'} being scanned, please wait patiently...` }
+    });
+
+    for (let i = 0; i < totalComponents; i++) {
+      const component = components[i];
+
+      // Update progress message every 10 components to avoid too many UI updates
+      if (i % 10 === 0 || i === totalComponents - 1) {
+        figma.ui.postMessage({
+          type: 'audit-progress',
+          data: { message: `Scanning ${totalComponents} component${totalComponents !== 1 ? 's' : ''}: ${i + 1}/${totalComponents} validated...` }
+        });
+      }
+
+      // Yield to event loop after EVERY component to keep UI responsive
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      const result = validateComponentBindings(component.node);
+      results.push(result);
+
+      if (!result.isFullyBound) {
+        const totalRawValues = Object.values(result.rawValueCounts).reduce((a, b) => a + b, 0);
+        componentsWithIssues.push({
+          name: result.componentName,
+          pageName: component.pageName,
+          counts: result.rawValueCounts,
+          totalRawValues
+        });
+      }
+    }
+
+    // Final progress update
+    figma.ui.postMessage({
+      type: 'audit-progress',
+      data: { message: `Completed scanning ${totalComponents} component${totalComponents !== 1 ? 's' : ''}!` }
+    });
+
+    // Generate audit checks - one per component (pass/fail only)
+    const totalValidated = results.length;
+    const compliantComponents = results.filter(r => r.isFullyBound).length;
+    
+    // Create one audit check per component with page information
+    for (const component of components) {
+      const result = results.find(r => r.componentName === component.node.name);
+      if (!result) continue;
+
+      if (result.isFullyBound) {
+        // Component passes - fully bound to variables
+        auditChecks.push({
+          check: `${result.componentName}`,
+          status: 'pass',
+          suggestion: `Component uses theme variables for all visual properties`,
+          pageName: component.pageName
+        });
+      } else {
+        // Component fails - has hard-coded values
+        const comp = componentsWithIssues.find(c => c.name === result.componentName);
+        if (comp) {
+          const issues: string[] = [];
+
+          if (comp.counts.fill > 0) {
+            issues.push(`- ${comp.counts.fill} fill color${comp.counts.fill > 1 ? 's' : ''} (should use color/* variables)`);
+          }
+          if (comp.counts.stroke > 0) {
+            issues.push(`- ${comp.counts.stroke} stroke color${comp.counts.stroke > 1 ? 's' : ''} (should use color/* variables)`);
+          }
+          if (comp.counts.spacing > 0) {
+            issues.push(`- ${comp.counts.spacing} spacing value${comp.counts.spacing > 1 ? 's' : ''} (should use space/* variables for padding/gap)`);
+          }
+          if (comp.counts.cornerRadius > 0) {
+            issues.push(`- ${comp.counts.cornerRadius} corner radi${comp.counts.cornerRadius > 1 ? 'i' : 'us'} (should use radius/* variables)`);
+          }
+          if (comp.counts.typography > 0) {
+            issues.push(`- ${comp.counts.typography} typography value${comp.counts.typography > 1 ? 's' : ''} (should use font-* variables)`);
+          }
+          if (comp.counts.effect > 0) {
+            issues.push(`- ${comp.counts.effect} effect${comp.counts.effect > 1 ? 's' : ''} (should use effect/* variables)`);
+          }
+
+          auditChecks.push({
+            check: `${result.componentName}`,
+            status: 'fail',
+            suggestion: `${comp.totalRawValues} hard-coded value${comp.totalRawValues > 1 ? 's' : ''}:\n${issues.join('\n')}\n\nTo fix: Select this component in Figma, then bind the listed properties to their corresponding variables in your Theme collection.`,
+            pageName: component.pageName
+          });
+        }
+      }
+    }
+
+    console.log('🧩 [COMPONENT BINDING - CURRENT PAGE] Validation complete:', {
+      page: pageName,
+      total: totalValidated,
+      compliant: compliantComponents,
+      withIssues: componentsWithIssues.length
+    });
+    
+    return { results, auditChecks };
+    
+  } catch (error) {
+    console.error('❌ [COMPONENT BINDING - CURRENT PAGE] Error validating component bindings:', error);
+    return {
+      results,
+      auditChecks: [{
+        check: 'Component variable bindings (current page)',
         status: 'warning',
         suggestion: `Could not validate component bindings: ${error instanceof Error ? error.message : 'Unknown error'}`
       }]

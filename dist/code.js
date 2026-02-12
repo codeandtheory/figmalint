@@ -120,7 +120,6 @@
             continue;
           }
           console.log(`\u2139\uFE0F [COLLECTION] No "${requirement.displayName}" collection found - suggesting creation`);
-          const categoryList = requirement.requiredCategories.map((c) => c.name).join(", ");
           const examples = requirement.requiredCategories.map((cat) => {
             switch (cat.name) {
               case "color":
@@ -1058,6 +1057,137 @@ To fix: Select this component in Figma, then bind the listed properties to their
       };
     }
   }
+  async function validateCurrentPageComponentBindings() {
+    const auditChecks = [];
+    const results = [];
+    try {
+      console.log("\u{1F9E9} [COMPONENT BINDING - CURRENT PAGE] Starting validation...");
+      const components = [];
+      let nodesProcessed = 0;
+      const currentPage = figma.currentPage;
+      const pageName = currentPage.name;
+      async function findComponents(node) {
+        if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+          components.push({ node, pageName });
+        }
+        if ("children" in node) {
+          for (const child of node.children) {
+            nodesProcessed++;
+            if (nodesProcessed % 50 === 0) {
+              await new Promise((resolve) => setTimeout(resolve, 0));
+            }
+            await findComponents(child);
+          }
+        }
+      }
+      console.log("\u{1F9E9} [COMPONENT BINDING - CURRENT PAGE] Scanning page:", pageName);
+      figma.ui.postMessage({
+        type: "audit-progress",
+        data: { message: `Scanning current page: "${pageName}"` }
+      });
+      for (const child of currentPage.children) {
+        await findComponents(child);
+      }
+      console.log("\u{1F9E9} [COMPONENT BINDING - CURRENT PAGE] Found", components.length, "components on page:", pageName);
+      if (components.length === 0) {
+        return { results, auditChecks };
+      }
+      const componentsWithIssues = [];
+      const totalComponents = components.length;
+      figma.ui.postMessage({
+        type: "audit-progress",
+        data: { message: `${totalComponents} component${totalComponents !== 1 ? "s are" : " is"} being scanned, please wait patiently...` }
+      });
+      for (let i = 0; i < totalComponents; i++) {
+        const component = components[i];
+        if (i % 10 === 0 || i === totalComponents - 1) {
+          figma.ui.postMessage({
+            type: "audit-progress",
+            data: { message: `Scanning ${totalComponents} component${totalComponents !== 1 ? "s" : ""}: ${i + 1}/${totalComponents} validated...` }
+          });
+        }
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const result = validateComponentBindings(component.node);
+        results.push(result);
+        if (!result.isFullyBound) {
+          const totalRawValues = Object.values(result.rawValueCounts).reduce((a, b) => a + b, 0);
+          componentsWithIssues.push({
+            name: result.componentName,
+            pageName: component.pageName,
+            counts: result.rawValueCounts,
+            totalRawValues
+          });
+        }
+      }
+      figma.ui.postMessage({
+        type: "audit-progress",
+        data: { message: `Completed scanning ${totalComponents} component${totalComponents !== 1 ? "s" : ""}!` }
+      });
+      const totalValidated = results.length;
+      const compliantComponents = results.filter((r) => r.isFullyBound).length;
+      for (const component of components) {
+        const result = results.find((r) => r.componentName === component.node.name);
+        if (!result) continue;
+        if (result.isFullyBound) {
+          auditChecks.push({
+            check: `${result.componentName}`,
+            status: "pass",
+            suggestion: `Component uses theme variables for all visual properties`,
+            pageName: component.pageName
+          });
+        } else {
+          const comp = componentsWithIssues.find((c) => c.name === result.componentName);
+          if (comp) {
+            const issues = [];
+            if (comp.counts.fill > 0) {
+              issues.push(`- ${comp.counts.fill} fill color${comp.counts.fill > 1 ? "s" : ""} (should use color/* variables)`);
+            }
+            if (comp.counts.stroke > 0) {
+              issues.push(`- ${comp.counts.stroke} stroke color${comp.counts.stroke > 1 ? "s" : ""} (should use color/* variables)`);
+            }
+            if (comp.counts.spacing > 0) {
+              issues.push(`- ${comp.counts.spacing} spacing value${comp.counts.spacing > 1 ? "s" : ""} (should use space/* variables for padding/gap)`);
+            }
+            if (comp.counts.cornerRadius > 0) {
+              issues.push(`- ${comp.counts.cornerRadius} corner radi${comp.counts.cornerRadius > 1 ? "i" : "us"} (should use radius/* variables)`);
+            }
+            if (comp.counts.typography > 0) {
+              issues.push(`- ${comp.counts.typography} typography value${comp.counts.typography > 1 ? "s" : ""} (should use font-* variables)`);
+            }
+            if (comp.counts.effect > 0) {
+              issues.push(`- ${comp.counts.effect} effect${comp.counts.effect > 1 ? "s" : ""} (should use effect/* variables)`);
+            }
+            auditChecks.push({
+              check: `${result.componentName}`,
+              status: "fail",
+              suggestion: `${comp.totalRawValues} hard-coded value${comp.totalRawValues > 1 ? "s" : ""}:
+${issues.join("\n")}
+
+To fix: Select this component in Figma, then bind the listed properties to their corresponding variables in your Theme collection.`,
+              pageName: component.pageName
+            });
+          }
+        }
+      }
+      console.log("\u{1F9E9} [COMPONENT BINDING - CURRENT PAGE] Validation complete:", {
+        page: pageName,
+        total: totalValidated,
+        compliant: compliantComponents,
+        withIssues: componentsWithIssues.length
+      });
+      return { results, auditChecks };
+    } catch (error) {
+      console.error("\u274C [COMPONENT BINDING - CURRENT PAGE] Error validating component bindings:", error);
+      return {
+        results,
+        auditChecks: [{
+          check: "Component variable bindings (current page)",
+          status: "warning",
+          suggestion: `Could not validate component bindings: ${error instanceof Error ? error.message : "Unknown error"}`
+        }]
+      };
+    }
+  }
 
   // src/ui/message-handler.ts
   async function handleUIMessage(msg) {
@@ -1073,6 +1203,9 @@ To fix: Select this component in Figma, then bind the listed properties to their
           break;
         case "analyze-components":
           await handleComponentsAudit();
+          break;
+        case "analyze-components-current-page":
+          await handleComponentsCurrentPageAudit();
           break;
         default:
           console.warn("Unknown message type:", type);
@@ -1179,6 +1312,25 @@ To fix: Select this component in Figma, then bind the listed properties to their
       });
     }
   }
+  async function handleComponentsCurrentPageAudit() {
+    try {
+      console.log("\u{1F50D} Running Components (Current Page) audit...");
+      const componentBindings = await validateCurrentPageComponentBindings();
+      const componentStats = calculateComponentStats(componentBindings.auditChecks);
+      sendMessageToUI("components-audit-result", {
+        componentBindings: componentBindings.auditChecks,
+        scores: {
+          component: componentStats
+        }
+      });
+      console.log("\u2705 Components (Current Page) audit complete");
+    } catch (error) {
+      console.error("\u274C Components (Current Page) audit error:", error);
+      sendMessageToUI("components-audit-result", {
+        error: error instanceof Error ? error.message : "Unknown error during Components (Current Page) audit"
+      });
+    }
+  }
   function calculateAuditStats(checks) {
     if (checks.length === 0) {
       return { score: 100, passed: 0, warnings: 0, failed: 0, total: 0 };
@@ -1204,7 +1356,7 @@ To fix: Select this component in Figma, then bind the listed properties to their
   }
 
   // src/code.ts
-  var PLUGIN_WINDOW_SIZE = { width: 400, height: 700 };
+  var PLUGIN_WINDOW_SIZE = { width: 440, height: 700 };
   try {
     figma.showUI(__html__, PLUGIN_WINDOW_SIZE);
     console.log("\u2705 ctdsLint v3.0 - UI shown successfully");

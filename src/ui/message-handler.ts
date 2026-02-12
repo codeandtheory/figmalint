@@ -5,7 +5,8 @@ import {
   validateCollectionStructure,
   validateTextStylesAgainstVariables,
   validateTextStyleBindings,
-  validateAllComponentBindings
+  validateAllComponentBindings,
+  validateCurrentPageComponentBindings
 } from '../core/collection-validator';
 
 /**
@@ -25,6 +26,9 @@ export async function handleUIMessage(msg: any): Promise<void> {
         break;
       case 'analyze-components':
         await handleComponentsAudit();
+        break;
+      case 'analyze-components-current-page':
+        await handleComponentsCurrentPageAudit();
         break;
       default:
         console.warn('Unknown message type:', type);
@@ -167,6 +171,36 @@ async function handleComponentsAudit(): Promise<void> {
     console.error('❌ Components audit error:', error);
     sendMessageToUI('components-audit-result', {
       error: error instanceof Error ? error.message : 'Unknown error during Components audit'
+    });
+  }
+}
+
+/**
+ * Components Current Page audit - validates component bindings on current page only
+ */
+async function handleComponentsCurrentPageAudit(): Promise<void> {
+  try {
+    console.log('🔍 Running Components (Current Page) audit...');
+
+    // Run component bindings validation for current page only
+    const componentBindings = await validateCurrentPageComponentBindings();
+
+    // Calculate score using component-specific stats (pass/fail only)
+    const componentStats = calculateComponentStats(componentBindings.auditChecks);
+
+    // Send results to UI (reuse same result type as full components audit)
+    sendMessageToUI('components-audit-result', {
+      componentBindings: componentBindings.auditChecks,
+      scores: {
+        component: componentStats
+      }
+    });
+
+    console.log('✅ Components (Current Page) audit complete');
+  } catch (error) {
+    console.error('❌ Components (Current Page) audit error:', error);
+    sendMessageToUI('components-audit-result', {
+      error: error instanceof Error ? error.message : 'Unknown error during Components (Current Page) audit'
     });
   }
 }

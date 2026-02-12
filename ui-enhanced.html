@@ -2228,12 +2228,15 @@
         <!-- CT/DS Audit Heading and Buttons -->
         <div style="margin-bottom: 16px;">
           <h2 style="font-size: 16px; font-weight: 600; margin: 0 0 12px 0; color: var(--text-primary);">Run CT/DS Audit</h2>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-            <button id="run-variables-styles" class="button button-primary">
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button id="run-variables-styles" class="flex button button-primary">
               <span>Variables & Styles</span>
             </button>
-            <button id="run-components" class="button button-primary">
-              <span>Components</span>
+            <button id="run-components-all" class="flex button button-primary">
+              <span>Components (All)</span>
+            </button>
+            <button id="run-components-page" class="flex button button-primary">
+              <span>Components (Page)</span>
             </button>
           </div>
         </div>
@@ -2423,7 +2426,8 @@
     // Chat State Management
     // DOM Elements
     const runVariablesStylesButton = document.getElementById('run-variables-styles');
-    const runComponentsButton = document.getElementById('run-components');
+    const runComponentsAllButton = document.getElementById('run-components-all');
+    const runComponentsPageButton = document.getElementById('run-components-page');
 
     const statusContainer = document.getElementById('status-container');
     const statusDiv = document.getElementById('status');
@@ -2791,7 +2795,8 @@
 
       // Event Listeners
       runVariablesStylesButton.addEventListener('click', handleAnalyzeVariablesStyles);
-      runComponentsButton.addEventListener('click', handleAnalyzeComponents);
+      runComponentsAllButton.addEventListener('click', handleAnalyzeComponents);
+      runComponentsPageButton.addEventListener('click', handleAnalyzeComponentsCurrentPage);
 
       // Listen for messages from plugin
       window.addEventListener('message', handlePluginMessage);
@@ -3396,16 +3401,16 @@
       sendMessageToPlugin('analyze-variables-styles', {});
     }
 
-    // Handle Components Audit
+    // Handle Components Audit (All Pages)
     function handleAnalyzeComponents() {
-      updateStatus('Running Components audit...', 'info');
+      updateStatus('Running Components audit (all pages)...', 'info');
 
       // Show progress indicator
       const progressContainer = document.getElementById('progress-container');
       const progressText = document.getElementById('progress-text');
       if (progressContainer && progressText) {
         progressContainer.classList.remove('hidden');
-        progressText.textContent = 'Scanning components (this may take a while)...';
+        progressText.textContent = 'Scanning all components (this may take a while)...';
       }
 
       // Show system results
@@ -3419,6 +3424,31 @@
       `;
 
       sendMessageToPlugin('analyze-components', {});
+    }
+
+    // Handle Components Audit (Current Page Only)
+    function handleAnalyzeComponentsCurrentPage() {
+      updateStatus('Running Components audit (current page)...', 'info');
+
+      // Show progress indicator
+      const progressContainer = document.getElementById('progress-container');
+      const progressText = document.getElementById('progress-text');
+      if (progressContainer && progressText) {
+        progressContainer.classList.remove('hidden');
+        progressText.textContent = 'Scanning components on current page...';
+      }
+
+      // Show system results
+      systemResults.classList.remove('hidden');
+
+      // Show loading state in system audit content
+      systemAuditContent.innerHTML = `
+        <div class="skeleton"></div>
+        <div class="skeleton" style="width: 80%;"></div>
+        <div class="skeleton" style="width: 60%;"></div>
+      `;
+
+      sendMessageToPlugin('analyze-components-current-page', {});
     }
 
     // Handle Batch Mode Toggle
